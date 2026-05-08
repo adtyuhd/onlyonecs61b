@@ -49,7 +49,7 @@ import java.util.Iterator;
 
      // 向队列尾部添加元素
      public void addLast(T item){
-         Node newNode = new Node(item, sentinel.next, sentinel);
+         Node newNode = new Node(item, sentinel.prev, sentinel);
          sentinel.prev.next = newNode;
          sentinel.prev= newNode;
          size++;
