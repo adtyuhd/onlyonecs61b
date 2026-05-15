@@ -1,5 +1,5 @@
 package gitlet;
-
+import gitlet.Blob;
 import java.io.File;
 import java.io.Serializable;
 import java.text.SimpleDateFormat;
@@ -16,15 +16,15 @@ public class Repository implements Serializable {
     public static final File GITLET_DIR = join(CWD, ".gitlet");
     public static final File COMMITS_DIR = join(GITLET_DIR, "commits");
     public static final File BLOBS_DIR = join(GITLET_DIR, "blobs");
-    private Map<String, String> branches;//<,分支名字符串,
+    private Map<String, String> branches= new HashMap<>();//<,分支名字符串,
     // 一串 commitId（就是 commits 文件夹里那个文件名）>
     // 当前正在使用的分支名
     private String currentBranch;
     // 暂存区
-    private Map<String, String> staging;//<Filename,blobid>
+    private Map<String, String> staging= new HashMap<>();//<Filename,blobid>
     // 待删除清单
-    private Set<String> toRemove;//Filename
-    Map<String,String>remotes;
+    private Set<String> toRemove=new HashSet<>();//Filename
+    Map<String,String>remotes= new HashMap<>();
 
     public void init() {
         if (GITLET_DIR.exists()) {
@@ -39,10 +39,10 @@ public class Repository implements Serializable {
         this.branches = new HashMap<>();
         this.branches.put("master", c.getId());
         this.currentBranch="master";
-        writeObject(join(GITLET_DIR,"repo"),this);
+       Utils.writeObject(join(GITLET_DIR,"repo"),this);
     }
     public void add(String fileName) {
-        File addOne=join(CWD,fileName);
+        File addOne=Utils.join(CWD,fileName);
         if(!addOne.exists()){
             System.out.println("File does not exist.");
             return;
@@ -50,21 +50,21 @@ public class Repository implements Serializable {
         if(toRemove.contains(fileName)){
             toRemove.remove(fileName);
         }
-        String content= readContentsAsString(addOne);
+        String content= Utils.readContentsAsString(addOne);
         String commitid=branches.get(currentBranch);
-        File Latest=join(COMMITS_DIR,commitid);
-        Commit c= readObject(Latest, Commit.class);
+        File Latest=Utils.join(COMMITS_DIR,commitid);
+        Commit c= Utils.readObject(Latest, Commit.class);
         Map<String, String> map=c.getFileNameToBlobId();
         Blob b=new Blob(content);
-        writeObject(join(BLOBS_DIR,b.getBlobId()), (Serializable) b);
+        Utils.writeObject(join(BLOBS_DIR,b.getBlobId()), (Serializable) b);
         String blobname=b.getBlobId();
         if(!map.containsKey(fileName)){
             staging.put(fileName,blobname);
         }
         else{
             String oldBlobId = map.get(fileName);
-            File oldBlobFile = join(BLOBS_DIR, oldBlobId);
-            String oldContent = readContentsAsString(oldBlobFile);
+            File oldBlobFile =Utils.join(BLOBS_DIR, oldBlobId);
+            String oldContent =Utils.readContentsAsString(oldBlobFile);
             if(content.equals(oldContent)){
                 staging.remove(fileName);
             }
@@ -72,7 +72,7 @@ public class Repository implements Serializable {
                 staging.put(fileName,blobname);
             }
         }
-       writeObject(GITLET_DIR,this);
+        Utils.writeObject(join(GITLET_DIR, "repo"), this);
     }
     public void commit(String message) {
         if(message.isEmpty()){
@@ -84,8 +84,8 @@ public class Repository implements Serializable {
             return;
         }
         String parentcommitid=branches.get(currentBranch);
-        File Latest=join(COMMITS_DIR,parentcommitid);
-        Commit parentcommit= readObject(Latest, Commit.class);
+        File Latest=Utils.join(COMMITS_DIR,parentcommitid);
+        Commit parentcommit=Utils.readObject(Latest, Commit.class);
         Map<String, String> map=parentcommit.getFileNameToBlobId();
         Map<String, String> newmap = new HashMap<>(map);
         newmap.putAll(staging);
@@ -100,7 +100,7 @@ public class Repository implements Serializable {
         staging.clear();
         toRemove.clear();
         branches.put(currentBranch,newCommit.getId());
-        writeObject(GITLET_DIR,this);
+        Utils.writeObject(join(GITLET_DIR, "repo"), this);
     }
     public void rm(String fileName) {
         if(staging.containsKey(fileName)){
@@ -108,8 +108,8 @@ public class Repository implements Serializable {
             return;
         }
         String commitid=branches.get(currentBranch);
-        File Latest=join(COMMITS_DIR,commitid);
-        Commit c= readObject(Latest, Commit.class);
+        File Latest=Utils.join(COMMITS_DIR,commitid);
+        Commit c=Utils.readObject(Latest, Commit.class);
         Map<String, String> map=c.getFileNameToBlobId();
         if(map.containsKey(fileName)){
             toRemove.add(fileName);
@@ -117,7 +117,7 @@ public class Repository implements Serializable {
             f.delete();
             return;
         }
-        writeObject(join(GITLET_DIR,"repo"),this);
+       Utils.writeObject(join(GITLET_DIR,"repo"),this);
         System.out.println("No reason to remove the file.");
     }
     public void log() {
@@ -149,11 +149,11 @@ public class Repository implements Serializable {
         }
     }
     public void globalLog() {
-        List<String> ListOfcommitid =plainFilenamesIn(COMMITS_DIR);
+        List<String> ListOfcommitid =Utils.plainFilenamesIn(COMMITS_DIR);
         if (ListOfcommitid != null) {
             for(String s:ListOfcommitid){
-                File Latest=join(COMMITS_DIR,s);
-                Commit c= readObject(Latest, Commit.class);
+                File Latest=Utils.join(COMMITS_DIR,s);
+                Commit c=Utils.readObject(Latest, Commit.class);
                 System.out.println("===");
                 System.out.println("commit " + s); // 完整哈希
 
@@ -171,12 +171,12 @@ public class Repository implements Serializable {
         }
     }
     public void find(String message) {
-        List<String> ListOfcommitid =plainFilenamesIn(COMMITS_DIR);
+        List<String> ListOfcommitid =Utils.plainFilenamesIn(COMMITS_DIR);
         boolean found=false;
         if (ListOfcommitid != null) {
             for(String s:ListOfcommitid){
-                File Latest=join(COMMITS_DIR,s);
-                Commit c= readObject(Latest, Commit.class);
+                File Latest=Utils.join(COMMITS_DIR,s);
+                Commit c=Utils.readObject(Latest, Commit.class);
                 if(c.getMessage().equals(message)){
                     found=true;
                     System.out.println(s);
@@ -223,16 +223,16 @@ public class Repository implements Serializable {
             }
             else{
                 String blobid=filenametobid.get(args[2]);
-                File BlobFile = join(BLOBS_DIR, blobid);
-                String Content = readContentsAsString(BlobFile);
+                File BlobFile =Utils.join(BLOBS_DIR, blobid);
+                String Content =Utils.readContentsAsString(BlobFile);
                 File f=new File(args[2]);
-                writeContents(f,Content);
+               Utils.writeContents(f,Content);
             }
         }
         else if(n==4){
             String commitid=args[1];
             String filename=args[3];
-            List<String> ListOfcommitid =plainFilenamesIn(COMMITS_DIR);
+            List<String> ListOfcommitid =Utils.plainFilenamesIn(COMMITS_DIR);
             int cnt=0;
             String totalcommitid="";
             for(String Commitid:ListOfcommitid){
@@ -248,7 +248,7 @@ public class Repository implements Serializable {
                 System.out.println("No commit with that id exists.");
                 return;
             }
-            File commitFile=join(COMMITS_DIR,totalcommitid);
+            File commitFile=Utils.join(COMMITS_DIR,totalcommitid);
             Commit commit = Utils.readObject(commitFile, Commit.class);
             Map<String, String> filenametobid=commit.getFileNameToBlobId();
             if(!filenametobid.containsKey(filename)){
@@ -256,10 +256,10 @@ public class Repository implements Serializable {
                 return;
             }
             String blobid=filenametobid.get(filename);
-            File BlobFile = join(BLOBS_DIR, blobid);
-            String Content = readContentsAsString(BlobFile);
+        File BlobFile = Utils.join(BLOBS_DIR, blobid);
+            String Content =Utils.readContentsAsString(BlobFile);
             File f=new File(filename);
-            writeContents(f,Content);
+            Utils.writeContents(f,Content);
         }
         else{
             String branchname=args[1];
@@ -274,12 +274,12 @@ public class Repository implements Serializable {
             String targetCid = branches.get(branchname);
             Commit targetCommit = Utils.readObject(join(COMMITS_DIR, targetCid), Commit.class);
             Set<String> targetFiles = targetCommit.getFileNameToBlobId().keySet();
-            List<String> workFiles = plainFilenamesIn(new File("."));
+            List<String> workFiles =Utils.plainFilenamesIn(new File("."));
             boolean hasDanger = false;
             for (String fileName : workFiles) {
                 // 条件1：是未跟踪文件
                 boolean isUntracked = true;
-                for (String cid : plainFilenamesIn(COMMITS_DIR)) {
+                for (String cid :Utils.plainFilenamesIn(COMMITS_DIR)) {
                     Commit c = Utils.readObject(join(COMMITS_DIR, cid), Commit.class);
                     if (c.getFileNameToBlobId().containsKey(fileName)) {
                         isUntracked = false;
@@ -299,10 +299,10 @@ public class Repository implements Serializable {
             }
             for(String fn:targetFiles){
                 String blobid=targetCommit.getFileNameToBlobId().get(fn);
-                File BlobFile = join(BLOBS_DIR, blobid);
-                String Content = readContentsAsString(BlobFile);
+                File BlobFile =Utils.join(BLOBS_DIR, blobid);
+                String Content =Utils.readContentsAsString(BlobFile);
                 File f=new File(fn);
-                writeContents(f,Content);
+               Utils.writeContents(f,Content);
             }
             for(String s:workFiles){
                 if(!targetFiles.contains(s)){
@@ -313,7 +313,7 @@ public class Repository implements Serializable {
             toRemove.clear();
             currentBranch=branchname;
         }
-        writeObject(join(GITLET_DIR,"repo"),this);
+        Utils.writeObject(join(GITLET_DIR,"repo"),this);
     }
 
     public void branch(String branchName) {
@@ -323,7 +323,7 @@ public class Repository implements Serializable {
         }
         String commitid=branches.get(currentBranch);
         branches.put(branchName,commitid);
-        writeObject(join(GITLET_DIR,"repo"),this);
+        Utils.writeObject(join(GITLET_DIR,"repo"),this);
     }
     public void rmBranch(String branchName) {
         if(!branches.containsKey(branchName)){
@@ -335,10 +335,10 @@ public class Repository implements Serializable {
             return;
         }
         branches.remove(branchName);
-        writeObject(join(GITLET_DIR,"repo"),this);
+        Utils.writeObject(join(GITLET_DIR,"repo"),this);
     }
     public void reset(String commitId) {
-        List<String> ListOfcommitid =plainFilenamesIn(COMMITS_DIR);
+        List<String> ListOfcommitid =Utils.plainFilenamesIn(COMMITS_DIR);
         int cnt=0;
         String totalcommitid="";
         if (ListOfcommitid != null) {
@@ -358,12 +358,12 @@ public class Repository implements Serializable {
         }
         Commit targetCommit = Utils.readObject(join(COMMITS_DIR, totalcommitid), Commit.class);
         Set<String> targetFiles = targetCommit.getFileNameToBlobId().keySet();
-        List<String> workFiles = plainFilenamesIn(new File("."));
+        List<String> workFiles =Utils.plainFilenamesIn(new File("."));
         boolean hasDanger = false;
         for (String fileName : workFiles) {
             // 条件1：是未跟踪文件
             boolean isUntracked = true;
-            for (String cid : plainFilenamesIn(COMMITS_DIR)) {
+            for (String cid :Utils.plainFilenamesIn(COMMITS_DIR)) {
                 Commit c = Utils.readObject(join(COMMITS_DIR, cid), Commit.class);
                 if (c.getFileNameToBlobId().containsKey(fileName)) {
                     isUntracked = false;
@@ -383,10 +383,10 @@ public class Repository implements Serializable {
         }
         for(String fn:targetFiles){
             String blobid=targetCommit.getFileNameToBlobId().get(fn);
-            File BlobFile = join(BLOBS_DIR, blobid);
-            String Content = readContentsAsString(BlobFile);
+            File BlobFile =Utils.join(BLOBS_DIR, blobid);
+            String Content =Utils.readContentsAsString(BlobFile);
             File f=new File(fn);
-            writeContents(f,Content);
+           Utils.writeContents(f,Content);
         }
         for(String s:workFiles){
             if(!targetFiles.contains(s)){
@@ -396,7 +396,7 @@ public class Repository implements Serializable {
         branches.put(currentBranch,totalcommitid);
         staging.clear();
         toRemove.clear();
-        writeObject(join(GITLET_DIR,"repo"),this);
+       Utils.writeObject(join(GITLET_DIR,"repo"),this);
     }
     public void merge(String branchName) {
         if(!staging.isEmpty()){
@@ -420,15 +420,15 @@ public class Repository implements Serializable {
         }
         Commit targetCommit = Utils.readObject(join(COMMITS_DIR, othercommitid), Commit.class);
         Set<String> targetFiles = targetCommit.getFileNameToBlobId().keySet();
-        List<String> workFiles = plainFilenamesIn(".");
+        List<String> workFiles =Utils.plainFilenamesIn(".");
         if(parentcommitid.equals(currcommitid)) {
             branches.put(currentBranch,othercommitid);
             for(String fn:targetFiles){
                 String blobid=targetCommit.getFileNameToBlobId().get(fn);
-                File BlobFile = join(BLOBS_DIR, blobid);
-                String Content = readContentsAsString(BlobFile);
+                File BlobFile =Utils.join(BLOBS_DIR, blobid);
+                String Content =Utils.readContentsAsString(BlobFile);
                 File f=new File(fn);
-                writeContents(f,Content);
+               Utils.writeContents(f,Content);
             }
             System.out.println("Current branch fast-forwarded.");
             return;
@@ -486,7 +486,7 @@ public class Repository implements Serializable {
                         + otherStr
                         + ">>>>>>>\n";
                 Utils.writeContents(new File(filename), conflictText);
-                staging.put(filename,null);
+                staging.put(filename,"CONFLICT");
                 conflictFlag = true;
             }
             if (conflictFlag) {
@@ -496,18 +496,12 @@ public class Repository implements Serializable {
         Date date = new Date();
         SimpleDateFormat sdf = new SimpleDateFormat("EEE MMM dd HH:mm:ss yyyy");
         String time = sdf.format(date);
-        Commit c=new Commit("Merge"+branchName+"into"+currentBranch,currcommitid,
+        Commit c=new Commit("Merged "+branchName+" into "+currentBranch,currcommitid,
                 othercommitid,time,staging);
-        String newCommitId = Utils.sha1(c);
-        writeObject(join(COMMITS_DIR,newCommitId), (Serializable) c);
+        String newCommitId = Utils.sha1(Utils.serialize(c));
+       Utils.writeObject(join(COMMITS_DIR,newCommitId), (Serializable) c);
         branches.put(currentBranch, newCommitId);
-        File brFile = Utils.join(GITLET_DIR, "branches");
-        StringBuilder sb = new StringBuilder();
-        for (String b : branches.keySet()) {
-            sb.append(b).append(": ").append(branches.get(b)).append("\n");
-        }
-        Utils.writeContents(brFile, sb.toString());
-        writeObject(join(GITLET_DIR,"repo"),this);
+       Utils.writeObject(join(GITLET_DIR,"repo"),this);
 
     }
     private  Set<String> getAllancestors(String commitid){
@@ -679,10 +673,10 @@ public class Repository implements Serializable {
         }
         String remoteCommitId = remoteBranches.get(branchName);
         COMMITS_DIR.mkdirs();
-        List<String> ListOfcommitid =plainFilenamesIn(COMMITS_DIR);
+    List<String> ListOfcommitid =Utils.plainFilenamesIn(COMMITS_DIR);
         File Fileofremote = Utils.join(path, "commits");
         Fileofremote.mkdirs();
-        List<String> ListOfremotecommitid =plainFilenamesIn(Fileofremote);
+        List<String> ListOfremotecommitid =Utils.plainFilenamesIn(Fileofremote);
         for(String s:ListOfremotecommitid){
             if(!ListOfcommitid.contains(s)){
                 File remoteCommitFile = Utils.join(Fileofremote, s);
@@ -692,10 +686,10 @@ public class Repository implements Serializable {
             }
         }
         BLOBS_DIR.mkdirs();
-        List<String> ListOfblobid =plainFilenamesIn(BLOBS_DIR);
+        List<String> ListOfblobid =Utils.plainFilenamesIn(BLOBS_DIR);
         File Fileofblobremote = Utils.join(path, "blobs");
         Fileofblobremote.mkdirs();
-        List<String> ListOfremoteblobid =plainFilenamesIn(Fileofblobremote);
+        List<String> ListOfremoteblobid =Utils.plainFilenamesIn(Fileofblobremote);
         for(String s:ListOfremoteblobid){
             if(!ListOfblobid.contains(s)){
                 File localblobFile = Utils.join(BLOBS_DIR, s);
