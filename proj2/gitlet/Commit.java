@@ -45,7 +45,14 @@ public class Commit implements Serializable{
     private String parent2;
     private Map<String, String> fileNameToBlobId;
 
-
+    // 初始commit构造函数（必须补全所有字段，不能为null）
+    public Commit() {
+        this.message = "initial commit";
+        this.time = String.valueOf(new Date(0).getTime());
+        this.parent1 = null;
+        this.parent2 = null;
+        this.fileNameToBlobId= new HashMap<>(); // 必须初始化！
+    }
     public Commit(String message, String parent1,String parent2, String timestamp,Map<String, String>map) {
         this.message = message;
         this.parent1 = parent1;
@@ -55,7 +62,8 @@ public class Commit implements Serializable{
     }
     public String getId() {
         // 用 SHA-1 生成唯一 ID
-        return Utils.sha1(this);
+        String data = time + message + parent1 + parent2 + fileNameToBlobId.toString();
+        return Utils.sha1(data);
     }
     public Map<String, String> getFileNameToBlobId(){
         return fileNameToBlobId;
