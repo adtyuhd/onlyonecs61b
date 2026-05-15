@@ -23,7 +23,7 @@ import static gitlet.Repository.COMMITS_DIR;
  *  @author TODO
  *  @author 作者名
  */
-public class Commit {
+public class Commit implements Serializable{
     /**
      * TODO: add instance variables here.
      * TODO: 在这里添加实例变量。
