@@ -1,5 +1,4 @@
 package gitlet;
-import gitlet.Blob;
 import java.io.File;
 import java.io.Serializable;
 import java.text.SimpleDateFormat;
@@ -188,7 +187,7 @@ public class Repository implements Serializable {
         }
     }
     public void status() {
-       List<String> Listofbranches= (List<String>) branches.keySet();
+       List<String> Listofbranches= new ArrayList<>( branches.keySet());
        Listofbranches.sort(null);
        for(String s:Listofbranches){
            if(s.equals(currentBranch)){
@@ -197,7 +196,7 @@ public class Repository implements Serializable {
            System.out.println(s);
        }
         System.out.println();
-       List<String> Listofstagingfilename= (List<String>) staging.keySet();
+       List<String> Listofstagingfilename= new ArrayList<>(staging.keySet());
        Listofstagingfilename.sort(null);
        for(String s:Listofstagingfilename){
            System.out.println(s);
