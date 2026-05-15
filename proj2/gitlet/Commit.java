@@ -43,7 +43,7 @@ public class Commit implements Serializable{
     private  String filename;
     private String parent1;
     private String parent2;
-    private Map<String, String> fileNameToBlobId;
+    private Map<String, String> fileNameToBlobId= new HashMap<>();
 
     // 初始commit构造函数（必须补全所有字段，不能为null）
     public Commit() {
