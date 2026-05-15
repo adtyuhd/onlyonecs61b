@@ -1,8 +1,5 @@
 package gitlet;
 
-// TODO: any imports you need here
-// TODO: 在这里添加你需要的导入语句
-
 import java.io.File;
 import java.io.Serializable;
 import java.util.Date; // TODO: You'll likely use this in this class
@@ -43,7 +40,7 @@ public class Commit implements Serializable{
     private  String filename;
     private String parent1;
     private String parent2;
-    private Map<String, String> fileNameToBlobId= new HashMap<>();
+    private Map<String, String> fileNameToBlobId;
 
     // 初始commit构造函数（必须补全所有字段，不能为null）
     public Commit() {
@@ -58,7 +55,7 @@ public class Commit implements Serializable{
         this.parent1 = parent1;
         this.parent2 = parent2;
         this.time = timestamp;
-        this.fileNameToBlobId = map;
+        this.fileNameToBlobId = new HashMap<>(map);
     }
     public String getId() {
         // 用 SHA-1 生成唯一 ID
@@ -93,6 +90,5 @@ public class Commit implements Serializable{
     public String getMessage() {
         return message;
     }
-        /* TODO: fill in the rest of this class. */
-    /* TODO: 补全这个类剩余的部分。 */
+
 }
