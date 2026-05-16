@@ -33,8 +33,8 @@ public class Repository implements Serializable {
         GITLET_DIR.mkdir();
         COMMITS_DIR.mkdir();
         BLOBS_DIR.mkdir();
-        Commit c=new Commit("initial commit",null,null,"1970 年 1 月 1 日 世界协调时间 00:00:00",null);
-        c.saveCommit(c);
+        Commit c = new Commit();
+        c.saveCommit();
         this.branches = new HashMap<>();
         this.branches.put("master", c.getId());
         this.currentBranch="master";
@@ -95,7 +95,7 @@ public class Repository implements Serializable {
         SimpleDateFormat sdf = new SimpleDateFormat("EEE MMM dd HH:mm:ss yyyy");
         String time = sdf.format(date);
         Commit newCommit=new Commit(message,parentcommitid,null,time,newmap);
-        newCommit.saveCommit(newCommit);
+        newCommit.saveCommit();
         staging.clear();
         toRemove.clear();
         branches.put(currentBranch,newCommit.getId());
