@@ -24,6 +24,17 @@ public class Repository implements Serializable {
     // 待删除清单
     private Set<String> toRemove=new TreeSet<>();//Filename
     Map<String,String>remotes= new TreeMap<>();
+    public Repository(){
+         Map<String, String> branches= new TreeMap<>();//<,分支名字符串,
+        // 一串 commitId（就是 commits 文件夹里那个文件名）>
+        // 当前正在使用的分支名
+        String currentBranch="master";
+        // 暂存区
+        Map<String, String> staging= new TreeMap<>();//<Filename,blobid>
+        // 待删除清单
+        Set<String> toRemove=new TreeSet<>();//Filename
+        Map<String,String>remotes= new TreeMap<>();
+    }
 
     public void init() {
         if (GITLET_DIR.exists()) {
