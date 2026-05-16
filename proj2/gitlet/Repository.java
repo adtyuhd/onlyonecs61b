@@ -59,8 +59,6 @@ public class Repository implements Serializable {
         }
         if(toRemove.contains(fileName)){
             toRemove.remove(fileName);
-            Utils.writeObject(Utils.join(GITLET_DIR, "repo"), this);
-            return;
         }
         String content= Utils.readContentsAsString(addOne);
         String commitid=branches.get(currentBranch);
@@ -206,6 +204,7 @@ public class Repository implements Serializable {
         }
     }
     public void status() {
+        System.out.println("=== Branches ===");
        List<String> Listofbranches= new ArrayList<>( branches.keySet());
        Listofbranches.sort(null);
        for(String s:Listofbranches){
