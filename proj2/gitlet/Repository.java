@@ -15,15 +15,15 @@ public class Repository implements Serializable {
     public static final File GITLET_DIR = join(CWD, ".gitlet");
     public static final File COMMITS_DIR = join(GITLET_DIR, "commits");
     public static final File BLOBS_DIR = join(GITLET_DIR, "blobs");
-    private Map<String, String> branches= new HashMap<>();//<,分支名字符串,
+    private Map<String, String> branches= new TreeMap<>();//<,分支名字符串,
     // 一串 commitId（就是 commits 文件夹里那个文件名）>
     // 当前正在使用的分支名
     private String currentBranch;
     // 暂存区
-    private Map<String, String> staging= new HashMap<>();//<Filename,blobid>
+    private Map<String, String> staging= new TreeMap<>();//<Filename,blobid>
     // 待删除清单
-    private Set<String> toRemove=new HashSet<>();//Filename
-    Map<String,String>remotes= new HashMap<>();
+    private Set<String> toRemove=new TreeSet<>();//Filename
+    Map<String,String>remotes= new TreeMap<>();
 
     public void init() {
         if (GITLET_DIR.exists()) {
@@ -35,7 +35,7 @@ public class Repository implements Serializable {
         BLOBS_DIR.mkdir();
         Commit c = new Commit();
         c.saveCommit();
-        this.branches = new HashMap<>();
+        this.branches = new TreeMap<>();
         this.branches.put("master", c.getId());
         this.currentBranch="master";
        Utils.writeObject(join(GITLET_DIR,"repo"),this);
@@ -51,6 +51,9 @@ public class Repository implements Serializable {
         }
         String content= Utils.readContentsAsString(addOne);
         String commitid=branches.get(currentBranch);
+        if(commitid==null){
+            return;
+        }
         File Latest=Utils.join(COMMITS_DIR,commitid);
         Commit c= Utils.readObject(Latest, Commit.class);
         Map<String, String> map=c.getFileNameToBlobId();
@@ -86,7 +89,7 @@ public class Repository implements Serializable {
         File Latest=Utils.join(COMMITS_DIR,parentcommitid);
         Commit parentcommit=Utils.readObject(Latest, Commit.class);
         Map<String, String> map=parentcommit.getFileNameToBlobId();
-        Map<String, String> newmap = new HashMap<>(map);
+        Map<String, String> newmap = new TreeMap<>(map);
         newmap.putAll(staging);
         for(String s:toRemove){
             newmap.remove(s);
@@ -456,7 +459,7 @@ public class Repository implements Serializable {
         Map<String, String> curr_s=currCommit.getFileNameToBlobId();
         Map<String, String> parent_s=splitCommit.getFileNameToBlobId();
         Map<String, String> other_s=otherCommit.getFileNameToBlobId();
-        Set<String> allFileName = new HashSet<>();
+        Set<String> allFileName = new TreeSet<>();
         allFileName.addAll(curr_s.keySet());
         allFileName.addAll(parent_s.keySet());
         allFileName.addAll(other_s.keySet());
@@ -504,7 +507,7 @@ public class Repository implements Serializable {
 
     }
     private  Set<String> getAllancestors(String commitid){
-        Set<String> ancestors = new HashSet<>();
+        Set<String> ancestors = new TreeSet<>();
         Queue<String> queue = new LinkedList<>();
         queue.add(commitid);
 
@@ -581,7 +584,7 @@ public class Repository implements Serializable {
         }
         File remoteBranchesFile = Utils.join(path, "branches");
 
-        Map<String, String> remoteBranches = new HashMap<>();
+        Map<String, String> remoteBranches = new TreeMap<>();
         String content = Utils.readContentsAsString(remoteBranchesFile);
         String[] lines = content.split("\n");
         for (String line : lines) {
