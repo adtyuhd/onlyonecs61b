@@ -2,10 +2,7 @@ package gitlet;
 
 import java.io.File;
 import java.io.Serializable;
-import java.util.Date; // TODO: You'll likely use this in this class
-import java.util.Date; // TODO: 你很可能会在这个类中使用它
-import java.util.HashMap;
-import java.util.Map;
+import java.util.*;
 
 import static gitlet.Repository.COMMITS_DIR;
 
@@ -48,14 +45,14 @@ public class Commit implements Serializable{
         this.time = String.valueOf(new Date(0).getTime());
         this.parent1 = null;
         this.parent2 = null;
-        this.fileNameToBlobId= new HashMap<>(); // 必须初始化！
+        this.fileNameToBlobId= new TreeMap<>(); // 必须初始化！
     }
     public Commit(String message, String parent1,String parent2, String timestamp,Map<String, String>map) {
         this.message = message;
         this.parent1 = parent1;
         this.parent2 = parent2;
         this.time = timestamp;
-        this.fileNameToBlobId = new HashMap<>(map);
+        this.fileNameToBlobId = new TreeMap<>(map);
     }
     public String getId() {
         // 用 SHA-1 生成唯一 ID
