@@ -65,15 +65,15 @@ public class Commit implements Serializable{
     public Map<String, String> getFileNameToBlobId(){
         return fileNameToBlobId;
     }
-    public void saveCommit(Commit c){
+    public void saveCommit(){
         // 1. 拿到 commit 的唯一 ID
-        String commitId = c.getId();
+        String commitId = this.getId();
 
         // 2. 拼接路径：.gitlet/commits/xxx（commitId）
         File commitFile = Utils.join(COMMITS_DIR, commitId);
 
         // 3. 把 commit 对象保存到文件里（必须用 writeObject）
-        Utils.writeObject(commitFile, (Serializable) c);
+        Utils.writeObject(commitFile, (Serializable) time);
     }
     public String getParent() {
         return parent1;
