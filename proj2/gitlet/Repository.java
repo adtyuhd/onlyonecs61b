@@ -20,15 +20,15 @@ public class Repository implements Serializable {
     public static final File GITLET_DIR = join(CWD, ".gitlet");
     public static final File COMMITS_DIR = join(GITLET_DIR, "commits");
     public static final File BLOBS_DIR = join(GITLET_DIR, "blobs");
-    private Map<String, String> branches = new TreeMap<>();//<,分支名字符串,
+    private Map<String, String> branches ;//<,分支名字符串,
     // 一串 commitId（就是 commits 文件夹里那个文件名）>
     // 当前正在使用的分支名
     private String currentBranch;
     // 暂存区
-    private Map<String, String> staging = new TreeMap<>();//<Filename,blobid>
+    private Map<String, String> staging ;//<Filename,blobid>
     // 待删除清单
-    private Set<String> toRemove = new TreeSet<>();//Filename
-    Map<String, String> remotes = new TreeMap<>();
+    private Set<String> toRemove ;//Filename
+    Map<String, String> remotes;
 
     public Repository() {
         this.branches = new TreeMap<>();//<,分支名字符串,
@@ -458,14 +458,14 @@ public class Repository implements Serializable {
         String currcommitid = branches.get(currentBranch);
         String othercommitid = branches.get(branchName);
         String parentcommitid = findcloseCommonParent(currcommitid, othercommitid);
-        if (parentcommitid.equals(othercommitid)) {
+        if (Objects.equals(parentcommitid, othercommitid)) {
             System.out.println("Given branch is an ancestor of the current branch.");
             return;
         }
         Commit targetCommit = Utils.readObject(join(COMMITS_DIR, othercommitid), Commit.class);
         Set<String> targetFiles = targetCommit.getFileNameToBlobId().keySet();
         List<String> workFiles = Utils.plainFilenamesIn(".");
-        if (parentcommitid.equals(currcommitid)) {
+        if (Objects.equals(parentcommitid, currcommitid)) {
             branches.put(currentBranch, othercommitid);
             for (String fn : targetFiles) {
                 String blobid = targetCommit.getFileNameToBlobId().get(fn);
@@ -474,6 +474,7 @@ public class Repository implements Serializable {
                 File f = new File(fn);
                 Utils.writeContents(f, Content);
             }
+            Utils.writeObject(Utils.join(GITLET_DIR, "repo"), this);
             System.out.println("Current branch fast-forwarded.");
             return;
         }
@@ -511,35 +512,55 @@ public class Repository implements Serializable {
             String splitblob = parent_s.get(filename);
             String currblob = curr_s.get(filename);
             String otherblob = other_s.get(filename);
-            if (currblob.equals(otherblob)) {
+            if (Objects.equals(currblob, otherblob)) {
 
-            } else if (currblob.equals(splitblob)) {
-                staging.put(filename, otherblob);
-                byte[] content = Utils.readContents(Utils.join(BLOBS_DIR, otherblob));
-                Utils.writeContents(new File(filename), content);
-            } else if (!otherblob.equals(splitblob) && !currblob.equals(splitblob)) {
-                byte[] currContent = Utils.readContents(Utils.join(BLOBS_DIR, currblob));
-                String currStr = new String(currContent);
-                byte[] otherContent = Utils.readContents(Utils.join(BLOBS_DIR, otherblob));
-                String otherStr = new String(otherContent);
+            } else if (Objects.equals(currblob, splitblob)) {
+                if (otherblob == null) {
+                    // 目标分支删了这个文件
+                    staging.remove(filename);
+                    new File(filename).delete();
+                } else {
+                    staging.put(filename, otherblob);
+                    byte[] content = Utils.readContents(Utils.join(BLOBS_DIR, otherblob));
+                    Utils.writeContents(new File(filename), content);
+                }
+            } else if (!Objects.equals(otherblob, splitblob) && !Objects.equals(currblob, splitblob)) {
+                String currStr = "";
+                String otherStr = "";
+
+                if (currblob != null) {
+                    currStr = Utils.readContentsAsString(Utils.join(BLOBS_DIR, currblob));
+                }
+                if (otherblob != null) {
+                    otherStr = Utils.readContentsAsString(Utils.join(BLOBS_DIR, otherblob));
+                }
+
                 String conflictText = "<<<<<<< HEAD\n"
                         + currStr
                         + "=======\n"
                         + otherStr
                         + ">>>>>>>\n";
+
                 Utils.writeContents(new File(filename), conflictText);
-                staging.put(filename, "CONFLICT");
+
+                Blob conflictBlob = new Blob(conflictText);
+                String conflictBlobId = conflictBlob.getBlobId();
+                Utils.writeContents(Utils.join(BLOBS_DIR, conflictBlobId), conflictText);
+                staging.put(filename, conflictBlobId);
                 conflictFlag = true;
             }
-            if (conflictFlag) {
-                System.out.println("Encountered a merge conflict.");
-            }
+
+        }
+        if (conflictFlag) {
+            System.out.println("Encountered a merge conflict.");
         }
         Date date = new Date();
         SimpleDateFormat sdf = new SimpleDateFormat("EEE MMM d HH:mm:ss yyyy Z", Locale.US);
         String time = sdf.format(date);
         Commit c = new Commit("Merged " + branchName + " into " + currentBranch, currcommitid,
                 othercommitid, time, staging);
+        staging.clear();
+        toRemove.clear();
         String newCommitId = Utils.sha1(Utils.serialize(c));
         Utils.writeObject(join(COMMITS_DIR, newCommitId), (Serializable) c);
         branches.put(currentBranch, newCommitId);
@@ -547,10 +568,10 @@ public class Repository implements Serializable {
 
     }
 
-    private Set<String> getAllancestors(String commitid) {
-        Set<String> ancestors = new TreeSet<>();
+    private Set<String> getAllAncestors(String commitId) {
+        Set<String> ancestors = new HashSet<>();
         Queue<String> queue = new LinkedList<>();
-        queue.add(commitid);
+        queue.add(commitId);
 
         while (!queue.isEmpty()) {
             String cid = queue.poll();
@@ -559,44 +580,41 @@ public class Repository implements Serializable {
             }
             ancestors.add(cid);
 
-            // 读取这个提交
             Commit c = Utils.readObject(Utils.join(COMMITS_DIR, cid), Commit.class);
-
-            // 把父1加入队列
             queue.add(c.getParent());
-
-            // 如果是合并提交，把父2也加入队列
-            if (c.getParent2() != null) {
-                queue.add(c.getParent2());
-            }
+            queue.add(c.getParent2());
         }
+
         return ancestors;
     }
 
     private String findcloseCommonParent(String currcommitid, String othercommitid) {
-        Set<String> otherAncestors = getAllancestors(othercommitid);
+        if (Objects.equals(currcommitid, othercommitid)) {
+            return currcommitid;
+        }
+
+        Set<String> otherAncestors = getAllAncestors(othercommitid);
         Queue<String> queue = new LinkedList<>();
+        Set<String> visited = new HashSet<>();
         queue.add(currcommitid);
 
         while (!queue.isEmpty()) {
             String cid = queue.poll();
+            if (cid == null || visited.contains(cid)) {
+                continue;
+            }
+            visited.add(cid);
 
-            // 如果这个提交也在另一个分支的祖先里 → 就是分叉点！
             if (otherAncestors.contains(cid)) {
                 return cid;
             }
 
             Commit c = Utils.readObject(Utils.join(COMMITS_DIR, cid), Commit.class);
-
-            // 继续往上找爹
-            if (c.getParent() != null) {
-                queue.add(c.getParent());
-            }
-            if (c.getParent2() != null) {
-                queue.add(c.getParent2());
-            }
+            queue.add(c.getParent());
+            queue.add(c.getParent2());
         }
-        return null; // 永远不会到这里
+
+        return null;
     }
 
     // 远程附加命令（可选）
@@ -645,7 +663,7 @@ public class Repository implements Serializable {
         String currcommitid = branches.get(currentBranch);
         if (remoteBranches.containsKey(branchName)) {
             String remotecommitid = remoteBranches.get(branchName);
-            Set<String> allancestors = getAllancestors(currcommitid);
+            Set<String> allancestors = getAllAncestors(currcommitid);
             if (!allancestors.contains(remotecommitid)) {
                 System.out.println("Please pull down remote changes before pushing.");
                 return;
