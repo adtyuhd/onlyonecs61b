@@ -46,7 +46,7 @@ public class Repository implements Serializable {
         BLOBS_DIR.mkdir();
         Commit c = new Commit();
         c.saveCommit();
-        
+
         this.branches.put("master", c.getId());
         this.currentBranch="master";
        Utils.writeObject(join(GITLET_DIR,"repo"),this);
@@ -59,6 +59,8 @@ public class Repository implements Serializable {
         }
         if(toRemove.contains(fileName)){
             toRemove.remove(fileName);
+            Utils.writeObject(Utils.join(GITLET_DIR, "repo"), this);
+            return;
         }
         String content= Utils.readContentsAsString(addOne);
         String commitid=branches.get(currentBranch);
@@ -69,8 +71,9 @@ public class Repository implements Serializable {
         Commit c= Utils.readObject(Latest, Commit.class);
         Map<String, String> map=c.getFileNameToBlobId();
         Blob b=new Blob(content);
-        Utils.writeObject(join(BLOBS_DIR,b.getBlobId()), (Serializable) b);
         String blobname=b.getBlobId();
+        File blobFile = Utils.join(BLOBS_DIR, blobname);
+        Utils.writeContents(blobFile, content);
         if(!map.containsKey(fileName)){
             staging.put(fileName,blobname);
         }
@@ -92,7 +95,7 @@ public class Repository implements Serializable {
             System.out.println("Please enter a commit message.");
            return;
         }
-        if(staging.isEmpty()){
+        if(staging.isEmpty()&&toRemove.isEmpty()){
             System.out.println("No changes added to the commit.");
             return;
         }
@@ -106,7 +109,7 @@ public class Repository implements Serializable {
             newmap.remove(s);
         }
         Date date = new Date();
-        SimpleDateFormat sdf = new SimpleDateFormat("EEE MMM dd HH:mm:ss yyyy");
+        SimpleDateFormat sdf = new SimpleDateFormat("EEE MMM d HH:mm:ss yyyy Z", Locale.US);
         String time = sdf.format(date);
         Commit newCommit=new Commit(message,parentcommitid,null,time,newmap);
         newCommit.saveCommit();
@@ -118,6 +121,7 @@ public class Repository implements Serializable {
     public void rm(String fileName) {
         if(staging.containsKey(fileName)){
             staging.remove(fileName);
+            Utils.writeObject(Utils.join(GITLET_DIR, "repo"), this);
             return;
         }
         String commitid=branches.get(currentBranch);
@@ -128,6 +132,7 @@ public class Repository implements Serializable {
             toRemove.add(fileName);
             File f=new File(fileName);
             f.delete();
+            Utils.writeObject(Utils.join(GITLET_DIR, "repo"), this);
             return;
         }
        Utils.writeObject(join(GITLET_DIR,"repo"),this);
@@ -210,17 +215,24 @@ public class Repository implements Serializable {
            System.out.println(s);
        }
         System.out.println();
+        System.out.println("=== Staged Files ===");
        List<String> Listofstagingfilename= new ArrayList<>(staging.keySet());
        Listofstagingfilename.sort(null);
        for(String s:Listofstagingfilename){
            System.out.println(s);
        }
         System.out.println();
+        System.out.println("=== Removed Files ===");
         List<String> Listoftoremove = new ArrayList<>(toRemove);
         Listoftoremove.sort(null);
         for(String s:Listoftoremove){
             System.out.println(s);
         }
+        System.out.println();
+        System.out.println("=== Modifications Not Staged For Commit ===");
+        System.out.println();
+
+        System.out.println("=== Untracked Files ===");
         System.out.println();
     }
     // checkout 统一入口 处理三种格式
@@ -242,7 +254,7 @@ public class Repository implements Serializable {
                Utils.writeContents(f,Content);
             }
         }
-        else if(n==4){
+        else if(n==4&& args[2].equals("--")){
             String commitid=args[1];
             String filename=args[3];
             List<String> ListOfcommitid =Utils.plainFilenamesIn(COMMITS_DIR);
@@ -574,6 +586,7 @@ public class Repository implements Serializable {
             return;
         }
         remotes.put(remoteName,path);
+        Utils.writeObject(Utils.join(GITLET_DIR, "repo"), this);
     }
     public void rmRemote(String remoteName) {
         if(!remotes.containsKey(remoteName)){
@@ -581,6 +594,7 @@ public class Repository implements Serializable {
             return;
         }
         remotes.remove(remoteName);
+        Utils.writeObject(Utils.join(GITLET_DIR, "repo"), this);
     }
     public void push(String remoteName, String branchName) {
         if(!remotes.containsKey(remoteName)){
@@ -690,12 +704,14 @@ public class Repository implements Serializable {
         File Fileofremote = Utils.join(path, "commits");
         Fileofremote.mkdirs();
         List<String> ListOfremotecommitid =Utils.plainFilenamesIn(Fileofremote);
-        for(String s:ListOfremotecommitid){
-            if(!ListOfcommitid.contains(s)){
-                File remoteCommitFile = Utils.join(Fileofremote, s);
-                File localCommitFile = Utils.join(COMMITS_DIR, s);
-                byte[] contents = Utils.readContents(remoteCommitFile);
-                Utils.writeContents(localCommitFile, contents);
+        if (ListOfremotecommitid != null) {
+            for(String s:ListOfremotecommitid){
+                if (ListOfcommitid != null && !ListOfcommitid.contains(s)) {
+                    File remoteCommitFile = Utils.join(Fileofremote, s);
+                    File localCommitFile = Utils.join(COMMITS_DIR, s);
+                    byte[] contents = Utils.readContents(remoteCommitFile);
+                    Utils.writeContents(localCommitFile, contents);
+                }
             }
         }
         BLOBS_DIR.mkdirs();
@@ -703,12 +719,14 @@ public class Repository implements Serializable {
         File Fileofblobremote = Utils.join(path, "blobs");
         Fileofblobremote.mkdirs();
         List<String> ListOfremoteblobid =Utils.plainFilenamesIn(Fileofblobremote);
-        for(String s:ListOfremoteblobid){
-            if(!ListOfblobid.contains(s)){
-                File localblobFile = Utils.join(BLOBS_DIR, s);
-                File remoteblobFile = Utils.join(Fileofblobremote, s);
-                byte[] contents = Utils.readContents(remoteblobFile);
-                Utils.writeContents(localblobFile, contents);
+        if (ListOfremoteblobid != null) {
+            for(String s:ListOfremoteblobid){
+                if (ListOfblobid != null && !ListOfblobid.contains(s)) {
+                    File localblobFile = Utils.join(BLOBS_DIR, s);
+                    File remoteblobFile = Utils.join(Fileofblobremote, s);
+                    byte[] contents = Utils.readContents(remoteblobFile);
+                    Utils.writeContents(localblobFile, contents);
+                }
             }
         }
         String localBranchName = remoteName + "/" + branchName;
