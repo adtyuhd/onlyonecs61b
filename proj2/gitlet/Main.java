@@ -1,5 +1,10 @@
 package gitlet;
 
+import java.io.File;
+
+import static gitlet.Utils.join;
+import static gitlet.Utils.readObject;
+
 /** Driver class for Gitlet, a subset of the Git version-control system.
  *  Gitlet 的驱动类，Gitlet 是 Git 版本控制系统的一个子集。
  *  @author TODO
@@ -19,18 +24,23 @@ public class Main {
             System.out.println("Please enter a command.");
             System.exit(0);
         }
-        Repository repo = new Repository();
-        String firstArg = args[0];
-        switch(firstArg) {
-            case "init":
-                // TODO: handle the `init` command
-                // TODO: 处理 `init` 命令
-                if(args.length!=1){
-                    System.out.println("Incorrect operands.");
-                    System.exit(0);
-                }
-                repo.init();
-                break;
+        String command = args[0];
+
+        if (command.equals("init")) {
+            Repository repo = new Repository();
+            repo.init();
+            return;
+        }
+
+        if (!Repository.GITLET_DIR.exists()) {
+            System.out.println("Not in an initialized Gitlet directory.");
+            return;
+        }
+
+        File repoFile = join(Repository.GITLET_DIR, "repo");
+        Repository repo = readObject(repoFile, Repository.class);
+
+        switch(command) {
             case "add":
                 // TODO: handle the `add [filename]` command
                 // TODO: 处理 `add [文件名]` 命令
