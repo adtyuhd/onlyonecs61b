@@ -410,7 +410,7 @@ public class Repository implements Serializable {
         Map<String, String> currentFiles = currentCommit.getFileNameToBlobId();
         Map<String, String> targetFiles = targetCommit.getFileNameToBlobId();
 
-        List<String> workFiles = Utils.plainFilenamesIn(Utils.CWD);
+        List<String> workFiles = Utils.plainFilenamesIn(CWD);
 
         // untracked conflict check
         if (workFiles != null) {
