@@ -315,7 +315,7 @@ public class Repository implements Serializable {
             String targetCid = branches.get(branchname);
             Commit targetCommit = Utils.readObject(join(COMMITS_DIR, targetCid), Commit.class);
             Set<String> targetFiles = targetCommit.getFileNameToBlobId().keySet();
-            List<String> workFiles = Utils.plainFilenamesIn(new File("."));
+            List<String> workFiles = Utils.plainFilenamesIn(CWD);
             boolean hasDanger = false;
             for (String fileName : workFiles) {
                 // 条件1：是未跟踪文件
@@ -381,66 +381,72 @@ public class Repository implements Serializable {
     }
 
     public void reset(String commitId) {
-        List<String> ListOfcommitid = Utils.plainFilenamesIn(COMMITS_DIR);
+        List<String> listOfCommitId = Utils.plainFilenamesIn(COMMITS_DIR);
         int cnt = 0;
-        String totalcommitid = "";
-        if (ListOfcommitid != null) {
-            for (String Commitid : ListOfcommitid) {
-                if (Commitid.startsWith(commitId)) {
+        String totalCommitId = "";
+
+        if (listOfCommitId != null) {
+            for (String commitFileName : listOfCommitId) {
+                if (commitFileName.startsWith(commitId)) {
                     cnt++;
-                    totalcommitid = Commitid;
+                    totalCommitId = commitFileName;
                 }
                 if (cnt > 1) {
                     return;
                 }
             }
         }
+
         if (cnt == 0) {
             System.out.println("No commit with that id exists.");
             return;
         }
-        Commit targetCommit = Utils.readObject(join(COMMITS_DIR, totalcommitid), Commit.class);
-        Set<String> targetFiles = targetCommit.getFileNameToBlobId().keySet();
-        List<String> workFiles = Utils.plainFilenamesIn(new File("."));
-        boolean hasDanger = false;
-        for (String fileName : workFiles) {
-            // 条件1：是未跟踪文件
-            boolean isUntracked = true;
-            for (String cid : Utils.plainFilenamesIn(COMMITS_DIR)) {
-                Commit c = Utils.readObject(join(COMMITS_DIR, cid), Commit.class);
-                if (c.getFileNameToBlobId().containsKey(fileName)) {
-                    isUntracked = false;
-                    break;
+
+        Commit currentCommit = Utils.readObject(
+                join(COMMITS_DIR, branches.get(currentBranch)), Commit.class);
+        Commit targetCommit = Utils.readObject(
+                join(COMMITS_DIR, totalCommitId), Commit.class);
+
+        Map<String, String> currentFiles = currentCommit.getFileNameToBlobId();
+        Map<String, String> targetFiles = targetCommit.getFileNameToBlobId();
+
+        List<String> workFiles = Utils.plainFilenamesIn(Utils.CWD);
+
+        // untracked conflict check
+        if (workFiles != null) {
+            for (String fileName : workFiles) {
+                boolean trackedByCurrent = currentFiles.containsKey(fileName);
+                boolean stagedForAdd = staging.containsKey(fileName);
+
+                if (!trackedByCurrent && !stagedForAdd && targetFiles.containsKey(fileName)) {
+                    System.out.println(
+                            "There is an untracked file in the way; delete it, or add and commit it first.");
+                    return;
                 }
-            }
-            // 条件2：目标分支里有这个文件
-            if (isUntracked && targetFiles.contains(fileName)) {
-                hasDanger = true;
-                break;
             }
         }
 
-        if (hasDanger) {
-            System.out.println("There is an untracked file in the way; delete it, or add and commit it first.");
-            return;
+        // checkout files from target commit
+        for (String fn : targetFiles.keySet()) {
+            String blobId = targetFiles.get(fn);
+            File blobFile = Utils.join(BLOBS_DIR, blobId);
+            String content = Utils.readContentsAsString(blobFile);
+            Utils.writeContents(new File(fn), content);
         }
-        for (String fn : targetFiles) {
-            String blobid = targetCommit.getFileNameToBlobId().get(fn);
-            File BlobFile = Utils.join(BLOBS_DIR, blobid);
-            String Content = Utils.readContentsAsString(BlobFile);
-            File f = new File(fn);
-            Utils.writeContents(f, Content);
-        }
-        for (String s : workFiles) {
-            if (!targetFiles.contains(s)) {
-                new File(s).delete();
+
+        // delete files tracked by current commit but absent in target commit
+        for (String fn : currentFiles.keySet()) {
+            if (!targetFiles.containsKey(fn)) {
+                new File(fn).delete();
             }
         }
-        branches.put(currentBranch, totalcommitid);
+
+        branches.put(currentBranch, totalCommitId);
         staging.clear();
         toRemove.clear();
         Utils.writeObject(join(GITLET_DIR, "repo"), this);
     }
+
 
     public void merge(String branchName) {
         if (!staging.isEmpty()) {
@@ -464,7 +470,7 @@ public class Repository implements Serializable {
         }
         Commit targetCommit = Utils.readObject(join(COMMITS_DIR, othercommitid), Commit.class);
         Set<String> targetFiles = targetCommit.getFileNameToBlobId().keySet();
-        List<String> workFiles = Utils.plainFilenamesIn(".");
+        List<String> workFiles = Utils.plainFilenamesIn(CWD);
         if (Objects.equals(parentcommitid, currcommitid)) {
             branches.put(currentBranch, othercommitid);
             for (String fn : targetFiles) {
