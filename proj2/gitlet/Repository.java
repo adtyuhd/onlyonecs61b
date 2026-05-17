@@ -642,153 +642,152 @@ public class Repository implements Serializable {
         Utils.writeObject(Utils.join(GITLET_DIR, "repo"), this);
     }
 
-    public void push(String remoteName, String branchName) {
+    private Repository readRemoteRepo(String remoteName) {
         if (!remotes.containsKey(remoteName)) {
             System.out.println("Remote directory not found.");
-            return;
+            return null;
         }
+
         String path = remotes.get(remoteName);
         File remoteDir = new File(path);
         if (!remoteDir.exists()) {
             System.out.println("Remote directory not found.");
-            return;
+            return null;
         }
-        File remoteBranchesFile = Utils.join(path, "branches");
 
-        Map<String, String> remoteBranches = new TreeMap<>();
-        String content = Utils.readContentsAsString(remoteBranchesFile);
-        String[] lines = content.split("\n");
-        for (String line : lines) {
-            line = line.trim();
-            if (line.isEmpty()) continue;
-            String[] parts = line.split(":", 2);
-            String branchNa = parts[0].trim();
-            String commitId = parts[1].trim();
-            remoteBranches.put(branchNa, commitId);
+        File remoteRepoFile = Utils._join_(remoteDir, "repo");
+        if (!remoteRepoFile.exists()) {
+            System.out.println("Remote directory not found.");
+            return null;
         }
-        String currcommitid = branches.get(currentBranch);
-        if (remoteBranches.containsKey(branchName)) {
-            String remotecommitid = remoteBranches.get(branchName);
-            Set<String> allancestors = getAllAncestors(currcommitid);
-            if (!allancestors.contains(remotecommitid)) {
-                System.out.println("Please pull down remote changes before pushing.");
-                return;
-            }
-        }
-        List<String> ListOfcommitid = plainFilenamesIn(COMMITS_DIR);
-        File Fileofremote = Utils.join(path, "commits");
-        Fileofremote.mkdirs();
-        List<String> ListOfremotecommitid = plainFilenamesIn(Fileofremote);
-        for (String s : ListOfcommitid) {
-            if (!ListOfremotecommitid.contains(s)) {
-                // 1. 构建本地提交文件
-                File localCommitFile = Utils.join(COMMITS_DIR, s);
-                // 2. 构建远程存放文件
-                File remoteCommitFile = Utils.join(Fileofremote, s);
-                // 3. 读取本地完整内容
-                byte[] contents = Utils.readContents(localCommitFile);
-                // 4. 原样写入远程文件
-                Utils.writeContents(remoteCommitFile, contents);
-            }
-        }
-        List<String> ListOfblobid = plainFilenamesIn(BLOBS_DIR);
-        File Fileofblobremote = Utils.join(path, "blobs");
-        Fileofblobremote.mkdirs();
-        List<String> ListOfremoteblobid = plainFilenamesIn(Fileofblobremote);
-        for (String s : ListOfblobid) {
-            if (!ListOfremoteblobid.contains(s)) {
-                // 1. 构建本地提交文件
-                File localblobFile = Utils.join(BLOBS_DIR, s);
-                // 2. 构建远程存放文件
-                File remoteblobFile = Utils.join(Fileofblobremote, s);
-                // 3. 读取本地完整内容
-                byte[] contents = Utils.readContents(localblobFile);
-                // 4. 原样写入远程文件
-                Utils.writeContents(remoteblobFile, contents);
-            }
-        }
-        remoteBranches.put(branchName, currcommitid);
-        StringBuilder sb = new StringBuilder();
-        for (String name : remoteBranches.keySet()) {
-            sb.append(name).append(": ").append(remoteBranches.get(name)).append("\n");
-        }
-        Utils.writeContents(remoteBranchesFile, sb.toString());
+
+        return Utils._readObject_(remoteRepoFile, Repository.class);
     }
 
-    public void fetch(String remoteName, String branchName) {
-        if (!remotes.containsKey(remoteName)) {
-            System.out.println("Remote directory not found.");
+    public void push(String remoteName, String branchName) {
+        Repository remoteRepo = readRemoteRepo(remoteName);
+        if (remoteRepo == null) {
             return;
         }
-        String path = remotes.get(remoteName);
-        File remoteDir = new File(path);
-        if (!remoteDir.exists()) {
-            System.out.println("Remote directory not found.");
-            return;
-        }
-        File remoteBranchesFile = Utils.join(path, "branches");
 
-        Map<String, String> remoteBranches = new HashMap<>();
-        if (remoteBranchesFile.exists()) {
-            String content = Utils.readContentsAsString(remoteBranchesFile);
-            String[] lines = content.split("\n");
-            for (String line : lines) {
-                line = line.trim();
-                if (line.isEmpty()) continue;
-                String[] parts = line.split(":", 2);
-                String branchNa = parts[0].trim();
-                String commitId = parts[1].trim();
-                remoteBranches.put(branchNa, commitId);
-            }
-        }
-        if (!remoteBranches.containsKey(branchName)) {
+        if (!remoteRepo.branches.containsKey(branchName)) {
             System.out.println("That remote does not have that branch.");
             return;
         }
-        String remoteCommitId = remoteBranches.get(branchName);
-        COMMITS_DIR.mkdirs();
-        List<String> ListOfcommitid = Utils.plainFilenamesIn(COMMITS_DIR);
-        File Fileofremote = Utils.join(path, "commits");
-        Fileofremote.mkdirs();
-        List<String> ListOfremotecommitid = Utils.plainFilenamesIn(Fileofremote);
-        if (ListOfremotecommitid != null) {
-            for (String s : ListOfremotecommitid) {
-                if (ListOfcommitid != null && !ListOfcommitid.contains(s)) {
-                    File remoteCommitFile = Utils.join(Fileofremote, s);
-                    File localCommitFile = Utils.join(COMMITS_DIR, s);
-                    byte[] contents = Utils.readContents(remoteCommitFile);
-                    Utils.writeContents(localCommitFile, contents);
+
+        String currCommitId = branches.get(currentBranch);
+        String remoteCommitId = remoteRepo.branches.get(branchName);
+
+        // 检查远端分支头是不是本地 HEAD 的祖先
+        Set<String> ancestors = getAllAncestors(currCommitId);
+        if (!ancestors.contains(remoteCommitId)) {
+            System.out.println("Please pull down remote changes before pushing.");
+            return;
+        }
+
+        String path = remotes.get(remoteName);
+        File remoteDir = new File(path);
+
+        File remoteCommitsDir = Utils._join_(remoteDir, "commits");
+        File remoteBlobsDir = Utils._join_(remoteDir, "blobs");
+        remoteCommitsDir.mkdirs();
+        remoteBlobsDir.mkdirs();
+
+        List<String> localCommits = Utils._plainFilenamesIn_(_COMMITS_DIR_);
+        List<String> remoteCommits = Utils._plainFilenamesIn_(remoteCommitsDir);
+
+        if (localCommits != null) {
+            for (String cid : localCommits) {
+                if (remoteCommits == null || !remoteCommits.contains(cid)) {
+                    File localCommitFile = Utils._join_(_COMMITS_DIR_, cid);
+                    File remoteCommitFile = Utils._join_(remoteCommitsDir, cid);
+                    byte[] contents = Utils._readContents_(localCommitFile);
+                    Utils._writeContents_(remoteCommitFile, contents);
                 }
             }
         }
-        BLOBS_DIR.mkdirs();
-        List<String> ListOfblobid = Utils.plainFilenamesIn(BLOBS_DIR);
-        File Fileofblobremote = Utils.join(path, "blobs");
-        Fileofblobremote.mkdirs();
-        List<String> ListOfremoteblobid = Utils.plainFilenamesIn(Fileofblobremote);
-        if (ListOfremoteblobid != null) {
-            for (String s : ListOfremoteblobid) {
-                if (ListOfblobid != null && !ListOfblobid.contains(s)) {
-                    File localblobFile = Utils.join(BLOBS_DIR, s);
-                    File remoteblobFile = Utils.join(Fileofblobremote, s);
-                    byte[] contents = Utils.readContents(remoteblobFile);
-                    Utils.writeContents(localblobFile, contents);
+
+        List<String> localBlobs = Utils._plainFilenamesIn_(_BLOBS_DIR_);
+        List<String> remoteBlobs = Utils._plainFilenamesIn_(remoteBlobsDir);
+
+        if (localBlobs != null) {
+            for (String bid : localBlobs) {
+                if (remoteBlobs == null || !remoteBlobs.contains(bid)) {
+                    File localBlobFile = Utils._join_(_BLOBS_DIR_, bid);
+                    File remoteBlobFile = Utils._join_(remoteBlobsDir, bid);
+                    byte[] contents = Utils._readContents_(localBlobFile);
+                    Utils._writeContents_(remoteBlobFile, contents);
                 }
             }
         }
+
+        // 更新远端分支指针
+        remoteRepo.branches.put(branchName, currCommitId);
+        Utils._writeObject_(Utils._join_(remoteDir, "repo"), remoteRepo);
+    }
+
+    public boolean fetch(String remoteName, String branchName) {
+        Repository remoteRepo = readRemoteRepo(remoteName);
+        if (remoteRepo == null) {
+            return false;
+        }
+
+        if (!remoteRepo.branches.containsKey(branchName)) {
+            System.out.println("That remote does not have that branch.");
+            return false;
+        }
+
+        String path = remotes.get(remoteName);
+        File remoteDir = new File(path);
+
+        File remoteCommitsDir = Utils._join_(remoteDir, "commits");
+        File remoteBlobsDir = Utils._join_(remoteDir, "blobs");
+
+        remoteCommitsDir.mkdirs();
+        remoteBlobsDir.mkdirs();
+
+        String remoteCommitId = remoteRepo.branches.get(branchName);
+
+        List<String> remoteCommits = Utils._plainFilenamesIn_(remoteCommitsDir);
+        List<String> localCommits = Utils._plainFilenamesIn_(_COMMITS_DIR_);
+
+        if (remoteCommits != null) {
+            for (String cid : remoteCommits) {
+                if (localCommits == null || !localCommits.contains(cid)) {
+                    File remoteCommitFile = Utils._join_(remoteCommitsDir, cid);
+                    File localCommitFile = Utils._join_(_COMMITS_DIR_, cid);
+                    byte[] contents = Utils._readContents_(remoteCommitFile);
+                    Utils._writeContents_(localCommitFile, contents);
+                }
+            }
+        }
+
+        List<String> remoteBlobs = Utils._plainFilenamesIn_(remoteBlobsDir);
+        List<String> localBlobs = Utils._plainFilenamesIn_(_BLOBS_DIR_);
+
+        if (remoteBlobs != null) {
+            for (String bid : remoteBlobs) {
+                if (localBlobs == null || !localBlobs.contains(bid)) {
+                    File remoteBlobFile = Utils._join_(remoteBlobsDir, bid);
+                    File localBlobFile = Utils._join_(_BLOBS_DIR_, bid);
+                    byte[] contents = Utils._readContents_(remoteBlobFile);
+                    Utils._writeContents_(localBlobFile, contents);
+                }
+            }
+        }
+
+        // 创建本地追踪分支 remoteName/branchName
         String localBranchName = remoteName + "/" + branchName;
         branches.put(localBranchName, remoteCommitId);
 
-        File localBranchFile = Utils.join(GITLET_DIR, "branches");
-        StringBuilder sb = new StringBuilder();
-        for (String name : branches.keySet()) {
-            sb.append(name).append(": ").append(branches.get(name)).append("\n");
-        }
-        Utils.writeContents(localBranchFile, sb.toString());
+        Utils._writeObject_(Utils._join_(_GITLET_DIR_, "repo"), this);
+        return true;
     }
 
     public void pull(String remoteName, String branchName) {
-        fetch(remoteName, branchName);
+        if (!fetch(remoteName, branchName)) {
+            return;
+        }
         String localBranchName = remoteName + "/" + branchName;
         merge(localBranchName);
     }
