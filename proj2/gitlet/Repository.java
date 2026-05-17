@@ -655,13 +655,13 @@ public class Repository implements Serializable {
             return null;
         }
 
-        File remoteRepoFile = Utils._join_(remoteDir, "repo");
+        File remoteRepoFile = Utils.join(remoteDir, "repo");
         if (!remoteRepoFile.exists()) {
             System.out.println("Remote directory not found.");
             return null;
         }
 
-        return Utils._readObject_(remoteRepoFile, Repository.class);
+        return Utils.readObject(remoteRepoFile, Repository.class);
     }
 
     public void push(String remoteName, String branchName) {
@@ -688,42 +688,42 @@ public class Repository implements Serializable {
         String path = remotes.get(remoteName);
         File remoteDir = new File(path);
 
-        File remoteCommitsDir = Utils._join_(remoteDir, "commits");
-        File remoteBlobsDir = Utils._join_(remoteDir, "blobs");
+        File remoteCommitsDir = Utils.join(remoteDir, "commits");
+        File remoteBlobsDir = Utils.join(remoteDir, "blobs");
         remoteCommitsDir.mkdirs();
         remoteBlobsDir.mkdirs();
 
-        List<String> localCommits = Utils._plainFilenamesIn_(_COMMITS_DIR_);
-        List<String> remoteCommits = Utils._plainFilenamesIn_(remoteCommitsDir);
+        List<String> localCommits = Utils.plainFilenamesIn(COMMITS_DIR);
+        List<String> remoteCommits = Utils.plainFilenamesIn(remoteCommitsDir);
 
         if (localCommits != null) {
             for (String cid : localCommits) {
                 if (remoteCommits == null || !remoteCommits.contains(cid)) {
-                    File localCommitFile = Utils._join_(_COMMITS_DIR_, cid);
-                    File remoteCommitFile = Utils._join_(remoteCommitsDir, cid);
-                    byte[] contents = Utils._readContents_(localCommitFile);
-                    Utils._writeContents_(remoteCommitFile, contents);
+                    File localCommitFile = Utils.join(COMMITS_DIR, cid);
+                    File remoteCommitFile = Utils.join(remoteCommitsDir, cid);
+                    byte[] contents = Utils.readContents(localCommitFile);
+                    Utils.writeContents(remoteCommitFile, contents);
                 }
             }
         }
 
-        List<String> localBlobs = Utils._plainFilenamesIn_(_BLOBS_DIR_);
-        List<String> remoteBlobs = Utils._plainFilenamesIn_(remoteBlobsDir);
+        List<String> localBlobs = Utils.plainFilenamesIn(BLOBS_DIR);
+        List<String> remoteBlobs = Utils.plainFilenamesIn(remoteBlobsDir);
 
         if (localBlobs != null) {
             for (String bid : localBlobs) {
                 if (remoteBlobs == null || !remoteBlobs.contains(bid)) {
-                    File localBlobFile = Utils._join_(_BLOBS_DIR_, bid);
-                    File remoteBlobFile = Utils._join_(remoteBlobsDir, bid);
-                    byte[] contents = Utils._readContents_(localBlobFile);
-                    Utils._writeContents_(remoteBlobFile, contents);
+                    File localBlobFile = Utils.join(BLOBS_DIR, bid);
+                    File remoteBlobFile = Utils.join(remoteBlobsDir, bid);
+                    byte[] contents = Utils.readContents(localBlobFile);
+                    Utils.writeContents(remoteBlobFile, contents);
                 }
             }
         }
 
         // 更新远端分支指针
         remoteRepo.branches.put(branchName, currCommitId);
-        Utils._writeObject_(Utils._join_(remoteDir, "repo"), remoteRepo);
+        Utils._writeObject_(Utils.join(remoteDir, "repo"), remoteRepo);
     }
 
     public boolean fetch(String remoteName, String branchName) {
@@ -740,38 +740,38 @@ public class Repository implements Serializable {
         String path = remotes.get(remoteName);
         File remoteDir = new File(path);
 
-        File remoteCommitsDir = Utils._join_(remoteDir, "commits");
-        File remoteBlobsDir = Utils._join_(remoteDir, "blobs");
+        File remoteCommitsDir = Utils.join(remoteDir, "commits");
+        File remoteBlobsDir = Utils.join(remoteDir, "blobs");
 
         remoteCommitsDir.mkdirs();
         remoteBlobsDir.mkdirs();
 
         String remoteCommitId = remoteRepo.branches.get(branchName);
 
-        List<String> remoteCommits = Utils._plainFilenamesIn_(remoteCommitsDir);
-        List<String> localCommits = Utils._plainFilenamesIn_(_COMMITS_DIR_);
+        List<String> remoteCommits = Utils.plainFilenamesIn(remoteCommitsDir);
+        List<String> localCommits = Utils.plainFilenamesIn(COMMITS_DIR);
 
         if (remoteCommits != null) {
             for (String cid : remoteCommits) {
                 if (localCommits == null || !localCommits.contains(cid)) {
-                    File remoteCommitFile = Utils._join_(remoteCommitsDir, cid);
-                    File localCommitFile = Utils._join_(_COMMITS_DIR_, cid);
-                    byte[] contents = Utils._readContents_(remoteCommitFile);
-                    Utils._writeContents_(localCommitFile, contents);
+                    File remoteCommitFile = Utils.join(remoteCommitsDir, cid);
+                    File localCommitFile = Utils.join(COMMITS_DIR, cid);
+                    byte[] contents = Utils.readContents(remoteCommitFile);
+                    Utils.writeContents(localCommitFile, contents);
                 }
             }
         }
 
-        List<String> remoteBlobs = Utils._plainFilenamesIn_(remoteBlobsDir);
-        List<String> localBlobs = Utils._plainFilenamesIn_(_BLOBS_DIR_);
+        List<String> remoteBlobs = Utils.plainFilenamesIn(remoteBlobsDir);
+        List<String> localBlobs = Utils.plainFilenamesIn(BLOBS_DIR);
 
         if (remoteBlobs != null) {
             for (String bid : remoteBlobs) {
                 if (localBlobs == null || !localBlobs.contains(bid)) {
-                    File remoteBlobFile = Utils._join_(remoteBlobsDir, bid);
-                    File localBlobFile = Utils._join_(_BLOBS_DIR_, bid);
-                    byte[] contents = Utils._readContents_(remoteBlobFile);
-                    Utils._writeContents_(localBlobFile, contents);
+                    File remoteBlobFile = Utils.join(remoteBlobsDir, bid);
+                    File localBlobFile = Utils.join(BLOBS_DIR, bid);
+                    byte[] contents = Utils.readContents(remoteBlobFile);
+                    Utils.writeContents(localBlobFile, contents);
                 }
             }
         }
@@ -780,7 +780,7 @@ public class Repository implements Serializable {
         String localBranchName = remoteName + "/" + branchName;
         branches.put(localBranchName, remoteCommitId);
 
-        Utils._writeObject_(Utils._join_(_GITLET_DIR_, "repo"), this);
+        Utils.writeObject(Utils.join(GITLET_DIR, "repo"), this);
         return true;
     }
 
