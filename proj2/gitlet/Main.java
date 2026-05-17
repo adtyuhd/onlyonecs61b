@@ -1,179 +1,796 @@
 package gitlet;
 
 import java.io.File;
+import java.io.Serializable;
+import java.text.SimpleDateFormat;
+import java.util.*;
 
-import static gitlet.Utils.join;
-import static gitlet.Utils.readObject;
+import static gitlet.Utils.*;
 
-/** Driver class for Gitlet, a subset of the Git version-control system.
- *  Gitlet 的驱动类，Gitlet 是 Git 版本控制系统的一个子集。
- *  @author TODO
- *  @author 作者名
- */
-public class Main {
-
-    /** Usage: java gitlet.Main ARGS, where ARGS contains
-     *  用法：java gitlet.Main 参数列表，其中参数列表包含
-     *  <COMMAND> <OPERAND1> <OPERAND2> ...
-     *  <命令> <操作数1> <操作数2> ...
+public class Repository implements Serializable {
+    /** The current working directory. */
+    /**
+     * 当前工作目录。
      */
-    public static void main(String[] args) {
-        // TODO: what if args is empty?
-        // TODO: 如果参数数组为空该怎么办？
-        if (args.length == 0) {
-            System.out.println("Please enter a command.");
-            System.exit(0);
-        }
-        String command = args[0];
+    public static final File CWD = new File(System.getProperty("user.dir"));
+    /** The .gitlet directory. */
+    /**
+     * .gitlet 目录（存放所有版本数据）。
+     */
+    public static final File GITLET_DIR = join(CWD, ".gitlet");
+    public static final File COMMITS_DIR = join(GITLET_DIR, "commits");
+    public static final File BLOBS_DIR = join(GITLET_DIR, "blobs");
+    private Map<String, String> branches ;//<,分支名字符串,
+    // 一串 commitId（就是 commits 文件夹里那个文件名）>
+    // 当前正在使用的分支名
+    private String currentBranch;
+    // 暂存区
+    private Map<String, String> staging ;//<Filename,blobid>
+    // 待删除清单
+    private Set<String> toRemove ;//Filename
+    Map<String, String> remotes;
 
-        if (command.equals("init")) {
-            Repository repo = new Repository();
-            repo.init();
+    public Repository() {
+        this.branches = new TreeMap<>();//<,分支名字符串,
+        // 一串 commitId（就是 commits 文件夹里那个文件名）>
+        // 当前正在使用的分支名
+        this.currentBranch = "master";
+        // 暂存区
+        this.staging = new TreeMap<>();//<Filename,blobid>
+        // 待删除清单
+        this.toRemove = new TreeSet<>();//Filename
+        this.remotes = new TreeMap<>();
+    }
+
+    public void init() {
+        if (GITLET_DIR.exists()) {
+            System.out.println("A Gitlet version-control system already exists in the current directory.");
+            return;
+        }
+        GITLET_DIR.mkdir();
+        COMMITS_DIR.mkdir();
+        BLOBS_DIR.mkdir();
+        Commit c = new Commit();
+        c.saveCommit();
+
+        this.branches.put("master", c.getId());
+        Utils.writeObject(join(GITLET_DIR, "repo"), this);
+    }
+
+    public void add(String fileName) {
+        File addOne = join(CWD, fileName);
+        if (!addOne.exists()) {
+            System.out.println("File does not exist.");
+            return;
+        }
+        if (toRemove.contains(fileName)) {
+            toRemove.remove(fileName);
+        }
+        String content = readContentsAsString(addOne);
+        Blob b = new Blob(content);
+        String blobname = b.getBlobId();
+        File blobFile = join(BLOBS_DIR, blobname);
+        writeContents(blobFile, content);
+
+        String commitid = branches.get(currentBranch);
+        // 修复：如果还没有任何提交，直接暂存文件
+        if (commitid == null) {
+            staging.put(fileName, blobname);
+            writeObject(join(GITLET_DIR, "repo"), this);
             return;
         }
 
-        if (!Repository.GITLET_DIR.exists()) {
-            System.out.println("Not in an initialized Gitlet directory.");
+        // 原有逻辑：比较与当前提交中的版本
+        File latest = join(COMMITS_DIR, commitid);
+        Commit c = readObject(latest, Commit.class);
+        Map<String, String> map = c.getFileNameToBlobId();
+        if (!map.containsKey(fileName)) {
+            staging.put(fileName, blobname);
+        } else {
+            String oldBlobId = map.get(fileName);
+            File oldBlobFile = join(BLOBS_DIR, oldBlobId);
+            String oldContent = readContentsAsString(oldBlobFile);
+            if (content.equals(oldContent)) {
+                staging.remove(fileName);
+            } else {
+                staging.put(fileName, blobname);
+            }
+        }
+        writeObject(join(GITLET_DIR, "repo"), this);
+    }
+
+    public void commit(String message) {
+        if (message.isEmpty()) {
+            System.out.println("Please enter a commit message.");
             return;
         }
+        if (staging.isEmpty() && toRemove.isEmpty()) {
+            System.out.println("No changes added to the commit.");
+            return;
+        }
+        String parentcommitid = branches.get(currentBranch);
+        File Latest = Utils.join(COMMITS_DIR, parentcommitid);
+        Commit parentcommit = Utils.readObject(Latest, Commit.class);
+        Map<String, String> map = parentcommit.getFileNameToBlobId();
+        Map<String, String> newmap = new TreeMap<>(map);
+        newmap.putAll(staging);
+        for (String s : toRemove) {
+            newmap.remove(s);
+        }
+        Date date = new Date();
+        SimpleDateFormat sdf = new SimpleDateFormat("EEE MMM d HH:mm:ss yyyy Z", Locale.US);
+        String time = sdf.format(date);
+        Commit newCommit = new Commit(message, parentcommitid, null, time, newmap);
+        newCommit.saveCommit();
+        staging.clear();
+        toRemove.clear();
+        branches.put(currentBranch, newCommit.getId());
+        Utils.writeObject(join(GITLET_DIR, "repo"), this);
+    }
 
-        File repoFile = join(Repository.GITLET_DIR, "repo");
-        Repository repo = readObject(repoFile, Repository.class);
+    public void rm(String fileName) {
+        if (staging.containsKey(fileName)) {
+            staging.remove(fileName);
+            Utils.writeObject(Utils.join(GITLET_DIR, "repo"), this);
+            return;
+        }
+        String commitid = branches.get(currentBranch);
+        if (commitid == null) {
+            return;
+        }
+        File Latest = Utils.join(COMMITS_DIR, commitid);
+        Commit c = Utils.readObject(Latest, Commit.class);
+        Map<String, String> map = c.getFileNameToBlobId();
+        if (map.containsKey(fileName)) {
+            toRemove.add(fileName);
+            File f = new File(fileName);
+            f.delete();
+            Utils.writeObject(Utils.join(GITLET_DIR, "repo"), this);
+            return;
+        }
+        Utils.writeObject(join(GITLET_DIR, "repo"), this);
+        System.out.println("No reason to remove the file.");
+    }
 
-        switch(command) {
-            case "add":
-                // TODO: handle the `add [filename]` command
-                // TODO: 处理 `add [文件名]` 命令
-                if(args.length!=2){
-                    System.out.println("Incorrect operands.");
-                    System.exit(0);
-                }
-                repo.add(args[1]);
-                break;
-            // TODO: FILL THE REST IN
-            // TODO: 填充剩余的命令
-            case "commit":
-                if(args.length!=2){
-                    System.out.println("Incorrect operands.");
-                    System.exit(0);
-                }
-                repo.commit(args[1]);
-                break;
-            case "rm":
-                if(args.length!=2){
-                    System.out.println("Incorrect operands.");
-                    System.exit(0);
-                }
-                repo.rm(args[1]);
-                break;
-            case "log":
-                if(args.length!=1){
-                    System.out.println("Incorrect operands.");
-                    System.exit(0);
-                }
-                repo.log();
-                break;
-            case "global-log":
-                if(args.length!=1){
-                    System.out.println("Incorrect operands.");
-                    System.exit(0);
-                }
-                repo.globalLog();
-                break;
-            case "find":
-                if(args.length!=2){
-                    System.out.println("Incorrect operands.");
-                    System.exit(0);
-                }
-                repo.find(args[1]);
-                break;
-            case "status":
-                if(args.length!=1){
-                    System.out.println("Incorrect operands.");
-                    System.exit(0);
-                }
-                repo.status();
-                break;
-            case "checkout":
-                if (!(args.length == 2 || args.length == 3 || args.length == 4)) {
-                    System.out.println("Incorrect operands.");
-                    System.exit(0);
-                }
-                repo.checkout(args);
-                break;
-            case "branch":
-                if(args.length!=2){
-                    System.out.println("Incorrect operands.");
-                    System.exit(0);
-                }
-                repo.branch(args[1]);
-                break;
-            case "rm-branch":
-                if(args.length!=2){
-                    System.out.println("Incorrect operands.");
-                    System.exit(0);
-                }
-                repo.rmBranch(args[1]);
-                break;
-            case "reset":
-                if(args.length!=2){
-                    System.out.println("Incorrect operands.");
-                    System.exit(0);
-                }
+    public void log() {
+        // 先拿到当前最新的提交
+        String currentId = branches.get(currentBranch);
+        // 开始回溯打印
+        while (currentId != null) {
+            // 1. 读取当前的提交对象
+            File commitFile = new File(COMMITS_DIR, currentId);
+            Commit commit = Utils.readObject(commitFile, Commit.class);
 
-                repo.reset(args[1]);
-                break;
-            case "merge":
-                if(args.length!=2){
-                    System.out.println("Incorrect operands.");
-                    System.exit(0);
-                }
+            // 2. 开始打印 ====================
+            System.out.println("===");
+            System.out.println("commit " + currentId); // 完整哈希
 
-                repo.merge(args[1]);
-                break;
-            case "add-remote":
-                if(args.length!=3){
-                    System.out.println("Incorrect operands.");
-                    System.exit(0);
-                }
+            // 如果是合并提交（有第二个父节点），打印 Merge 行
+            if (commit.getParent2() != null) {
+                String p1 = commit.getParent().substring(0, 7);
+                String p2 = commit.getParent2().substring(0, 7);
+                System.out.println("Merge: " + p1 + " " + p2);
+            }
 
-                repo.addRemote(args[1],args[2]);
-                break;
-            case "rm-remote":
-                if(args.length!=2){
-                    System.out.println("Incorrect operands.");
-                    System.exit(0);
-                }
+            System.out.println("Date: " + commit.getTime());
+            System.out.println(commit.getMessage());
+            System.out.println(); // 空行
 
-                repo.rmRemote(args[1]);
-                break;
-            case "push":
-                if(args.length!=3){
-                    System.out.println("Incorrect operands.");
-                    System.exit(0);
-                }
-
-                repo.push(args[1],args[2]);
-                break;
-            case "fetch":
-                if(args.length!=3){
-                    System.out.println("Incorrect operands.");
-                    System.exit(0);
-                }
-
-                repo.fetch(args[1],args[2]);
-                break;
-            case "pull":
-                if(args.length!=3){
-                    System.out.println("Incorrect operands.");
-                    System.exit(0);
-                }
-
-                repo.pull(args[1],args[2]);
-                break;
-            default:
-                System.out.println("No command with that name exists.");
-                System.exit(0);
+            // 3. 往前回溯（只看第一个父提交）
+            currentId = commit.getParent();
         }
     }
+
+    public void globalLog() {
+        List<String> ListOfcommitid = Utils.plainFilenamesIn(COMMITS_DIR);
+        if (ListOfcommitid != null) {
+            for (String s : ListOfcommitid) {
+                File Latest = Utils.join(COMMITS_DIR, s);
+                Commit c = Utils.readObject(Latest, Commit.class);
+                System.out.println("===");
+                System.out.println("commit " + s); // 完整哈希
+
+                // 如果是合并提交（有第二个父节点），打印 Merge 行
+                if (c.getParent2() != null) {
+                    String p1 = c.getParent().substring(0, 7);
+                    String p2 = c.getParent2().substring(0, 7);
+                    System.out.println("Merge: " + p1 + " " + p2);
+                }
+
+                System.out.println("Date: " + c.getTime());
+                System.out.println(c.getMessage());
+                System.out.println();
+            }
+        }
+    }
+
+    public void find(String message) {
+        List<String> ListOfcommitid = Utils.plainFilenamesIn(COMMITS_DIR);
+        boolean found = false;
+        if (ListOfcommitid != null) {
+            for (String s : ListOfcommitid) {
+                File Latest = Utils.join(COMMITS_DIR, s);
+                Commit c = Utils.readObject(Latest, Commit.class);
+                if (c.getMessage().equals(message)) {
+                    found = true;
+                    System.out.println(s);
+                }
+            }
+        }
+        if (!found) {
+            System.out.println("Found no commit with that message.");
+        }
+    }
+
+    public void status() {
+        System.out.println("=== Branches ===");
+        List<String> Listofbranches = new ArrayList<>(branches.keySet());
+        Listofbranches.sort(null);
+        for (String s : Listofbranches) {
+            if (s.equals(currentBranch)) {
+                System.out.print("*");
+            }
+            System.out.println(s);
+        }
+        System.out.println();
+        System.out.println("=== Staged Files ===");
+        List<String> Listofstagingfilename = new ArrayList<>(staging.keySet());
+        Listofstagingfilename.sort(null);
+        for (String s : Listofstagingfilename) {
+            System.out.println(s);
+        }
+        System.out.println();
+        System.out.println("=== Removed Files ===");
+        List<String> Listoftoremove = new ArrayList<>(toRemove);
+        Listoftoremove.sort(null);
+        for (String s : Listoftoremove) {
+            System.out.println(s);
+        }
+        System.out.println();
+        System.out.println("=== Modifications Not Staged For Commit ===");
+        System.out.println();
+
+        System.out.println("=== Untracked Files ===");
+        System.out.println();
+    }
+
+    // checkout 统一入口 处理三种格式
+    public void checkout(String[] args) {
+        int n = args.length;
+        if (n == 3 && args[1].equals("--")) {
+            String currentId = branches.get(currentBranch);
+            File commitFile = new File(COMMITS_DIR, currentId);
+            Commit commit = Utils.readObject(commitFile, Commit.class);
+            Map<String, String> filenametobid = commit.getFileNameToBlobId();
+            if (!filenametobid.containsKey(args[2])) {
+                System.out.println("File does not exist in that commit.");
+            } else {
+                String blobid = filenametobid.get(args[2]);
+                File BlobFile = Utils.join(BLOBS_DIR, blobid);
+                String Content = Utils.readContentsAsString(BlobFile);
+                File f = new File(args[2]);
+                Utils.writeContents(f, Content);
+            }
+        } else if (n == 4 && args[2].equals("--")) {
+            String commitid = args[1];
+            String filename = args[3];
+            List<String> ListOfcommitid = Utils.plainFilenamesIn(COMMITS_DIR);
+            int cnt = 0;
+            String totalcommitid = "";
+            for (String Commitid : ListOfcommitid) {
+                if (Commitid.startsWith(commitid)) {
+                    cnt++;
+                    totalcommitid = Commitid;
+                }
+                if (cnt > 1) {
+                    return;
+                }
+            }
+            if (cnt == 0) {
+                System.out.println("No commit with that id exists.");
+                return;
+            }
+            File commitFile = Utils.join(COMMITS_DIR, totalcommitid);
+            Commit commit = Utils.readObject(commitFile, Commit.class);
+            Map<String, String> filenametobid = commit.getFileNameToBlobId();
+            if (!filenametobid.containsKey(filename)) {
+                System.out.println("File does not exist in that commit.");
+                return;
+            }
+            String blobid = filenametobid.get(filename);
+            File BlobFile = Utils.join(BLOBS_DIR, blobid);
+            String Content = Utils.readContentsAsString(BlobFile);
+            File f = new File(filename);
+            Utils.writeContents(f, Content);
+        } else {
+            String branchname = args[1];
+            if (!branches.containsKey(branchname)) {
+                System.out.println("No such branch exists.");
+                return;
+            }
+            if (branchname.equals(currentBranch)) {
+                System.out.println("No need to checkout the current branch.");
+                return;
+            }
+            String targetCid = branches.get(branchname);
+            Commit targetCommit = Utils.readObject(join(COMMITS_DIR, targetCid), Commit.class);
+            Set<String> targetFiles = targetCommit.getFileNameToBlobId().keySet();
+            List<String> workFiles = Utils.plainFilenamesIn(CWD);
+            boolean hasDanger = false;
+            for (String fileName : workFiles) {
+                // 条件1：是未跟踪文件
+                boolean isUntracked = true;
+                for (String cid : Utils.plainFilenamesIn(COMMITS_DIR)) {
+                    Commit c = Utils.readObject(join(COMMITS_DIR, cid), Commit.class);
+                    if (c.getFileNameToBlobId().containsKey(fileName)) {
+                        isUntracked = false;
+                        break;
+                    }
+                }
+                // 条件2：目标分支里有这个文件
+                if (isUntracked && targetFiles.contains(fileName)) {
+                    hasDanger = true;
+                    break;
+                }
+            }
+
+            if (hasDanger) {
+                System.out.println("There is an untracked file in the way; delete it, or add and commit it first.");
+                return;
+            }
+            for (String fn : targetFiles) {
+                String blobid = targetCommit.getFileNameToBlobId().get(fn);
+                File BlobFile = Utils.join(BLOBS_DIR, blobid);
+                String Content = Utils.readContentsAsString(BlobFile);
+                File f = new File(fn);
+                Utils.writeContents(f, Content);
+            }
+            for (String s : workFiles) {
+                if (!targetFiles.contains(s)) {
+                    new File(s).delete();
+                }
+            }
+            staging.clear();
+            toRemove.clear();
+            currentBranch = branchname;
+        }
+        Utils.writeObject(join(GITLET_DIR, "repo"), this);
+    }
+
+    public void branch(String branchName) {
+        if (branches.containsKey(branchName)) {
+            System.out.println("A branch with that name already exists.");
+            return;
+        }
+        String commitid = branches.get(currentBranch);
+        branches.put(branchName, commitid);
+        Utils.writeObject(join(GITLET_DIR, "repo"), this);
+    }
+
+    public void rmBranch(String branchName) {
+        if (!branches.containsKey(branchName)) {
+            System.out.println("A branch with that name does not exist.");
+            return;
+        }
+        if (branchName.equals(currentBranch)) {
+            System.out.println("Cannot remove the current branch.");
+            return;
+        }
+        branches.remove(branchName);
+        Utils.writeObject(join(GITLET_DIR, "repo"), this);
+    }
+
+    public void reset(String commitId) {
+        List<String> listOfCommitId = Utils.plainFilenamesIn(COMMITS_DIR);
+        int cnt = 0;
+        String totalCommitId = "";
+
+        if (listOfCommitId != null) {
+            for (String commitFileName : listOfCommitId) {
+                if (commitFileName.startsWith(commitId)) {
+                    cnt++;
+                    totalCommitId = commitFileName;
+                }
+                if (cnt > 1) {
+                    return;
+                }
+            }
+        }
+
+        if (cnt == 0) {
+            System.out.println("No commit with that id exists.");
+            return;
+        }
+
+        Commit currentCommit = Utils.readObject(
+                join(COMMITS_DIR, branches.get(currentBranch)), Commit.class);
+        Commit targetCommit = Utils.readObject(
+                join(COMMITS_DIR, totalCommitId), Commit.class);
+
+        Map<String, String> currentFiles = currentCommit.getFileNameToBlobId();
+        Map<String, String> targetFiles = targetCommit.getFileNameToBlobId();
+
+        List<String> workFiles = Utils.plainFilenamesIn(CWD);
+
+        // untracked conflict check
+        if (workFiles != null) {
+            for (String fileName : workFiles) {
+                boolean trackedByCurrent = currentFiles.containsKey(fileName);
+                boolean stagedForAdd = staging.containsKey(fileName);
+
+                if (!trackedByCurrent && !stagedForAdd && targetFiles.containsKey(fileName)) {
+                    System.out.println(
+                            "There is an untracked file in the way; delete it, or add and commit it first.");
+                    return;
+                }
+            }
+        }
+
+        // checkout files from target commit
+        for (String fn : targetFiles.keySet()) {
+            String blobId = targetFiles.get(fn);
+            File blobFile = Utils.join(BLOBS_DIR, blobId);
+            String content = Utils.readContentsAsString(blobFile);
+            Utils.writeContents(new File(fn), content);
+        }
+
+        // delete files tracked by current commit but absent in target commit
+        for (String fn : currentFiles.keySet()) {
+            if (!targetFiles.containsKey(fn)) {
+                new File(fn).delete();
+            }
+        }
+
+        branches.put(currentBranch, totalCommitId);
+        staging.clear();
+        toRemove.clear();
+        Utils.writeObject(join(GITLET_DIR, "repo"), this);
+    }
+
+
+    public void merge(String branchName) {
+        if (!staging.isEmpty()) {
+            System.out.println("You have uncommitted changes.");
+            return;
+        }
+        if (!branches.containsKey(branchName)) {
+            System.out.println("A branch with that name does not exist.");
+            return;
+        }
+        if (branchName.equals(currentBranch)) {
+            System.out.println("Cannot merge a branch with itself.");
+            return;
+        }
+        String currcommitid = branches.get(currentBranch);
+        String othercommitid = branches.get(branchName);
+        String parentcommitid = findcloseCommonParent(currcommitid, othercommitid);
+        if (Objects.equals(parentcommitid, othercommitid)) {
+            System.out.println("Given branch is an ancestor of the current branch.");
+            return;
+        }
+        Commit targetCommit = Utils.readObject(join(COMMITS_DIR, othercommitid), Commit.class);
+        Set<String> targetFiles = targetCommit.getFileNameToBlobId().keySet();
+        List<String> workFiles = Utils.plainFilenamesIn(CWD);
+        if (Objects.equals(parentcommitid, currcommitid)) {
+            branches.put(currentBranch, othercommitid);
+            for (String fn : targetFiles) {
+                String blobid = targetCommit.getFileNameToBlobId().get(fn);
+                File BlobFile = Utils.join(BLOBS_DIR, blobid);
+                String Content = Utils.readContentsAsString(BlobFile);
+                File f = new File(fn);
+                Utils.writeContents(f, Content);
+            }
+            Utils.writeObject(Utils.join(GITLET_DIR, "repo"), this);
+            System.out.println("Current branch fast-forwarded.");
+            return;
+        }
+
+        Commit currCommit = Utils.readObject(join(COMMITS_DIR, currcommitid), Commit.class);
+        Set<String> currFiles = currCommit.getFileNameToBlobId().keySet();
+        Commit otherCommit = Utils.readObject(join(COMMITS_DIR, othercommitid), Commit.class);
+        Set<String> otherFiles = otherCommit.getFileNameToBlobId().keySet();
+        Commit splitCommit = Utils.readObject(join(COMMITS_DIR, parentcommitid), Commit.class);
+        Set<String> splitFiles = splitCommit.getFileNameToBlobId().keySet();
+
+        for (String f : workFiles) {
+            // 未跟踪 = 不在当前提交里
+            boolean untracked = !currFiles.contains(f);
+
+            // 会被覆盖 = 这个文件在 目标分支 或 分叉点 里存在
+            boolean willBeOverwritten = otherFiles.contains(f) || splitFiles.contains(f);
+
+            // 如果 未跟踪 + 会被覆盖 → 直接报错
+            if (untracked && willBeOverwritten) {
+                System.out.println("There is an untracked file in the way; delete it, or add and commit it first.");
+                return;
+            }
+        }
+        Map<String, String> curr_s = currCommit.getFileNameToBlobId();
+        Map<String, String> parent_s = splitCommit.getFileNameToBlobId();
+        Map<String, String> other_s = otherCommit.getFileNameToBlobId();
+        Set<String> allFileName = new TreeSet<>();
+        allFileName.addAll(curr_s.keySet());
+        allFileName.addAll(parent_s.keySet());
+        allFileName.addAll(other_s.keySet());
+        boolean conflictFlag = false;
+        for (String filename : allFileName) {
+
+            String splitblob = parent_s.get(filename);
+            String currblob = curr_s.get(filename);
+            String otherblob = other_s.get(filename);
+            if (Objects.equals(currblob, otherblob)) {
+
+            } else if (Objects.equals(currblob, splitblob)) {
+                if (otherblob == null) {
+                    // 目标分支删了这个文件
+                    staging.remove(filename);
+                    new File(filename).delete();
+                } else {
+                    staging.put(filename, otherblob);
+                    byte[] content = Utils.readContents(Utils.join(BLOBS_DIR, otherblob));
+                    Utils.writeContents(new File(filename), content);
+                }
+            } else if (!Objects.equals(otherblob, splitblob) && !Objects.equals(currblob, splitblob)) {
+                String currStr = "";
+                String otherStr = "";
+
+                if (currblob != null) {
+                    currStr = Utils.readContentsAsString(Utils.join(BLOBS_DIR, currblob));
+                }
+                if (otherblob != null) {
+                    otherStr = Utils.readContentsAsString(Utils.join(BLOBS_DIR, otherblob));
+                }
+
+                String conflictText = "<<<<<<< HEAD\n"
+                        + currStr
+                        + "=======\n"
+                        + otherStr
+                        + ">>>>>>>\n";
+
+                Utils.writeContents(new File(filename), conflictText);
+
+                Blob conflictBlob = new Blob(conflictText);
+                String conflictBlobId = conflictBlob.getBlobId();
+                Utils.writeContents(Utils.join(BLOBS_DIR, conflictBlobId), conflictText);
+                staging.put(filename, conflictBlobId);
+                conflictFlag = true;
+            }
+
+        }
+        if (conflictFlag) {
+            System.out.println("Encountered a merge conflict.");
+        }
+        Date date = new Date();
+        SimpleDateFormat sdf = new SimpleDateFormat("EEE MMM d HH:mm:ss yyyy Z", Locale.US);
+        String time = sdf.format(date);
+        Commit c = new Commit("Merged " + branchName + " into " + currentBranch, currcommitid,
+                othercommitid, time, staging);
+        staging.clear();
+        toRemove.clear();
+        String newCommitId = Utils.sha1(Utils.serialize(c));
+        Utils.writeObject(join(COMMITS_DIR, newCommitId), (Serializable) c);
+        branches.put(currentBranch, newCommitId);
+        Utils.writeObject(join(GITLET_DIR, "repo"), this);
+
+    }
+
+    private Set<String> getAllAncestors(String commitId) {
+        Set<String> ancestors = new HashSet<>();
+        Queue<String> queue = new LinkedList<>();
+        queue.add(commitId);
+
+        while (!queue.isEmpty()) {
+            String cid = queue.poll();
+            if (cid == null || ancestors.contains(cid)) {
+                continue;
+            }
+            ancestors.add(cid);
+
+            Commit c = Utils.readObject(Utils.join(COMMITS_DIR, cid), Commit.class);
+            queue.add(c.getParent());
+            queue.add(c.getParent2());
+        }
+
+        return ancestors;
+    }
+
+    private String findcloseCommonParent(String currcommitid, String othercommitid) {
+        if (Objects.equals(currcommitid, othercommitid)) {
+            return currcommitid;
+        }
+
+        Set<String> otherAncestors = getAllAncestors(othercommitid);
+        Queue<String> queue = new LinkedList<>();
+        Set<String> visited = new HashSet<>();
+        queue.add(currcommitid);
+
+        while (!queue.isEmpty()) {
+            String cid = queue.poll();
+            if (cid == null || visited.contains(cid)) {
+                continue;
+            }
+            visited.add(cid);
+
+            if (otherAncestors.contains(cid)) {
+                return cid;
+            }
+
+            Commit c = Utils.readObject(Utils.join(COMMITS_DIR, cid), Commit.class);
+            queue.add(c.getParent());
+            queue.add(c.getParent2());
+        }
+
+        return null;
+    }
+
+    // 远程附加命令（可选）
+    public void addRemote(String remoteName, String path) {
+        if (remotes.containsKey(remoteName)) {
+            System.out.println("A remote with that name already exists.");
+            return;
+        }
+        remotes.put(remoteName, path);
+        Utils.writeObject(Utils.join(GITLET_DIR, "repo"), this);
+    }
+
+    public void rmRemote(String remoteName) {
+        if (!remotes.containsKey(remoteName)) {
+            System.out.println("A remote with that name does not exist.");
+            return;
+        }
+        remotes.remove(remoteName);
+        Utils.writeObject(Utils.join(GITLET_DIR, "repo"), this);
+    }
+
+    public void push(String remoteName, String branchName) {
+        if (!remotes.containsKey(remoteName)) {
+            System.out.println("Remote directory not found.");
+            return;
+        }
+        String path = remotes.get(remoteName);
+        File remoteDir = new File(path);
+        if (!remoteDir.exists()) {
+            System.out.println("Remote directory not found.");
+            return;
+        }
+        File remoteBranchesFile = Utils.join(path, "branches");
+
+        Map<String, String> remoteBranches = new TreeMap<>();
+        String content = Utils.readContentsAsString(remoteBranchesFile);
+        String[] lines = content.split("\n");
+        for (String line : lines) {
+            line = line.trim();
+            if (line.isEmpty()) continue;
+            String[] parts = line.split(":", 2);
+            String branchNa = parts[0].trim();
+            String commitId = parts[1].trim();
+            remoteBranches.put(branchNa, commitId);
+        }
+        String currcommitid = branches.get(currentBranch);
+        if (remoteBranches.containsKey(branchName)) {
+            String remotecommitid = remoteBranches.get(branchName);
+            Set<String> allancestors = getAllAncestors(currcommitid);
+            if (!allancestors.contains(remotecommitid)) {
+                System.out.println("Please pull down remote changes before pushing.");
+                return;
+            }
+        }
+        List<String> ListOfcommitid = plainFilenamesIn(COMMITS_DIR);
+        File Fileofremote = Utils.join(path, "commits");
+        Fileofremote.mkdirs();
+        List<String> ListOfremotecommitid = plainFilenamesIn(Fileofremote);
+        for (String s : ListOfcommitid) {
+            if (!ListOfremotecommitid.contains(s)) {
+                // 1. 构建本地提交文件
+                File localCommitFile = Utils.join(COMMITS_DIR, s);
+                // 2. 构建远程存放文件
+                File remoteCommitFile = Utils.join(Fileofremote, s);
+                // 3. 读取本地完整内容
+                byte[] contents = Utils.readContents(localCommitFile);
+                // 4. 原样写入远程文件
+                Utils.writeContents(remoteCommitFile, contents);
+            }
+        }
+        List<String> ListOfblobid = plainFilenamesIn(BLOBS_DIR);
+        File Fileofblobremote = Utils.join(path, "blobs");
+        Fileofblobremote.mkdirs();
+        List<String> ListOfremoteblobid = plainFilenamesIn(Fileofblobremote);
+        for (String s : ListOfblobid) {
+            if (!ListOfremoteblobid.contains(s)) {
+                // 1. 构建本地提交文件
+                File localblobFile = Utils.join(BLOBS_DIR, s);
+                // 2. 构建远程存放文件
+                File remoteblobFile = Utils.join(Fileofblobremote, s);
+                // 3. 读取本地完整内容
+                byte[] contents = Utils.readContents(localblobFile);
+                // 4. 原样写入远程文件
+                Utils.writeContents(remoteblobFile, contents);
+            }
+        }
+        remoteBranches.put(branchName, currcommitid);
+        StringBuilder sb = new StringBuilder();
+        for (String name : remoteBranches.keySet()) {
+            sb.append(name).append(": ").append(remoteBranches.get(name)).append("\n");
+        }
+        Utils.writeContents(remoteBranchesFile, sb.toString());
+    }
+
+    public void fetch(String remoteName, String branchName) {
+        if (!remotes.containsKey(remoteName)) {
+            System.out.println("Remote directory not found.");
+            return;
+        }
+        String path = remotes.get(remoteName);
+        File remoteDir = new File(path);
+        if (!remoteDir.exists()) {
+            System.out.println("Remote directory not found.");
+            return;
+        }
+        File remoteBranchesFile = Utils.join(path, "branches");
+
+        Map<String, String> remoteBranches = new HashMap<>();
+        if (remoteBranchesFile.exists()) {
+            String content = Utils.readContentsAsString(remoteBranchesFile);
+            String[] lines = content.split("\n");
+            for (String line : lines) {
+                line = line.trim();
+                if (line.isEmpty()) continue;
+                String[] parts = line.split(":", 2);
+                String branchNa = parts[0].trim();
+                String commitId = parts[1].trim();
+                remoteBranches.put(branchNa, commitId);
+            }
+        }
+        if (!remoteBranches.containsKey(branchName)) {
+            System.out.println("That remote does not have that branch.");
+            return;
+        }
+        String remoteCommitId = remoteBranches.get(branchName);
+        COMMITS_DIR.mkdirs();
+        List<String> ListOfcommitid = Utils.plainFilenamesIn(COMMITS_DIR);
+        File Fileofremote = Utils.join(path, "commits");
+        Fileofremote.mkdirs();
+        List<String> ListOfremotecommitid = Utils.plainFilenamesIn(Fileofremote);
+        if (ListOfremotecommitid != null) {
+            for (String s : ListOfremotecommitid) {
+                if (ListOfcommitid != null && !ListOfcommitid.contains(s)) {
+                    File remoteCommitFile = Utils.join(Fileofremote, s);
+                    File localCommitFile = Utils.join(COMMITS_DIR, s);
+                    byte[] contents = Utils.readContents(remoteCommitFile);
+                    Utils.writeContents(localCommitFile, contents);
+                }
+            }
+        }
+        BLOBS_DIR.mkdirs();
+        List<String> ListOfblobid = Utils.plainFilenamesIn(BLOBS_DIR);
+        File Fileofblobremote = Utils.join(path, "blobs");
+        Fileofblobremote.mkdirs();
+        List<String> ListOfremoteblobid = Utils.plainFilenamesIn(Fileofblobremote);
+        if (ListOfremoteblobid != null) {
+            for (String s : ListOfremoteblobid) {
+                if (ListOfblobid != null && !ListOfblobid.contains(s)) {
+                    File localblobFile = Utils.join(BLOBS_DIR, s);
+                    File remoteblobFile = Utils.join(Fileofblobremote, s);
+                    byte[] contents = Utils.readContents(remoteblobFile);
+                    Utils.writeContents(localblobFile, contents);
+                }
+            }
+        }
+        String localBranchName = remoteName + "/" + branchName;
+        branches.put(localBranchName, remoteCommitId);
+
+        File localBranchFile = Utils.join(GITLET_DIR, "branches");
+        StringBuilder sb = new StringBuilder();
+        for (String name : branches.keySet()) {
+            sb.append(name).append(": ").append(branches.get(name)).append("\n");
+        }
+        Utils.writeContents(localBranchFile, sb.toString());
+    }
+
+    public void pull(String remoteName, String branchName) {
+        fetch(remoteName, branchName);
+        String localBranchName = remoteName + "/" + branchName;
+        merge(localBranchName);
+    }
+
 }
