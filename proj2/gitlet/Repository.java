@@ -723,7 +723,7 @@ public class Repository implements Serializable {
 
         // 更新远端分支指针
         remoteRepo.branches.put(branchName, currCommitId);
-        Utils._writeObject_(Utils.join(remoteDir, "repo"), remoteRepo);
+        Utils.writeObject(Utils.join(remoteDir, "repo"), remoteRepo);
     }
 
     public boolean fetch(String remoteName, String branchName) {
